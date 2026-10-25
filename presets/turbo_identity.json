@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "preset_version": "1.0.0",
+  "id": "turbo_identity",
+  "status": "candidate",
+  "description": "8-step DMD2 turbo on MOSS-Image SFT stacked with a character LoRA: distill LoRA (role distill) first, then the character LoRA (role character). Same sampling as turbo_8step.",
+  "model_families": [
+    "moss-image-sft"
+  ],
+  "checkpoint_policy": "native-moss-only",
+  "sampling": {
+    "steps": 8,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "shift": 5.0,
+    "cfg": 1.0,
+    "slg_mode": "off",
+    "slg_layers": [],
+    "slg_start": 0.0,
+    "slg_end": 1.0,
+    "restart": false,
+    "ancestral_noise": false,
+    "override_bounds": {
+      "steps": {
+        "min": 8,
+        "max": 16,
+        "verified_min": 8,
+        "verified_max": 8,
+        "source": {
+          "unit": "Euler steps",
+          "kind": "owner_practice",
+          "source": "owner 2026-10-25: raises steps to 12-16 when needed; cards document 8 (lodestones/Kromoss README lines 79, 139); 9-16 has no card source and no stack source"
+        }
+      },
+      "cfg": {
+        "min": 1.0,
+        "max": 2.0,
+        "verified_min": 1.0,
+        "verified_max": 1.1,
+        "source": {
+          "unit": "dimensionless guidance scale",
+          "kind": "owner_practice",
+          "source": "owner 2026-10-25: raises CFG to 1.5-2 when needed; card CFG 1 (README line 140), workflow note '1.0 (1.1 if you need negative prompt)' (kromoss_simple_workflow.json node 30); above 1.1 has no card source"
+        }
+      }
+    }
+  },
+  "lora_policy": "require_distill_and_character_profile",
+  "constraints": [
+    {
+      "id": "requires_distill_lora",
+      "kind": "requires_lora_role",
+      "severity": "error",
+      "reason": "missing_lora",
+      "role": "distill"
+    },
+    {
+      "id": "requires_character_lora",
+      "kind": "requires_lora_role",
+      "severity": "error",
+      "reason": "missing_lora",
+      "role": "character"
+    },
+    {
+      "id": "recommends_reference_photos",
+      "kind": "recommends_input",
+      "severity": "info",
+      "reason": "none",
+      "input": "reference_photos"
+    }
+  ],
+  "guards": [
+    {
+      "id": "identity_score",
+      "required": false,
+      "requires_dependency": "insightface",
+      "implemented_in": "second_queue"
+    }
+  ],
+  "postprocess": [],
+  "budget": {
+    "nominal_steps": 8,
+    "extra_forwards": 0,
+    "max_forwards": 32
+  },
+  "fallback": "error_on_incompatibility",
+  "calibration": {
+    "reference": "native-graph:UNETLoader+LoraLoaderModelOnly(distill,1.0)+LoraLoaderModelOnly(character)+KSampler(8,1.0,euler,simple)",
+    "manifest": null,
+    "state": "uncalibrated"
+  },
+  "ui": {
+    "group": "Candidate",
+    "recommended_final": false,
+    "label": "candidate",
+    "summary": "8-step DMD2 turbo plus a character LoRA: both LoRAs required, order distill then character. Identity under distill is unmeasured."
+  },
+  "sources": {
+    "sampling.steps": {
+      "unit": "Euler steps",
+      "kind": "vendor_doc",
+      "source": "https://huggingface.co/lodestones/Kromoss README.md lines 79, 136-141 (8 steps with either LoRA); kromoss_simple_workflow.json node 16: steps 8, euler, simple"
+    },
+    "sampling.shift": {
+      "unit": "dimensionless",
+      "kind": "vendor_doc",
+      "source": "Kromoss README line 141 (Shift 5); native model shift 5.0 (comfy/supported_models.py:2042-2045)"
+    },
+    "sampling.cfg": {
+      "unit": "dimensionless",
+      "kind": "vendor_doc",
+      "source": "Kromoss README line 140 (CFG 1); comfy/samplers.py:610-612 drops the uncond branch at cfg 1"
+    },
+    "sampling.slg_start": {
+      "unit": "fraction",
+      "kind": "vendor_doc",
+      "source": "SLG off, window kept at the schema default 0..1: Kromoss README line 142 (layer skipping: none); nodes_slg.py:149 makes SLG a no-op when uncond is None"
+    },
+    "sampling.slg_end": {
+      "unit": "fraction",
+      "kind": "vendor_doc",
+      "source": "SLG off, window kept at the schema default 0..1 (inert while slg_mode is off)"
+    },
+    "budget.nominal_steps": {
+      "unit": "Euler steps",
+      "kind": "derived",
+      "source": "equals sampling.steps"
+    },
+    "budget.extra_forwards": {
+      "unit": "model forwards",
+      "kind": "derived",
+      "source": "no corrections, restart or detailer in v1 (SPEC 5, 6.1)"
+    },
+    "budget.max_forwards": {
+      "unit": "model forwards",
+      "kind": "derived",
+      "source": "override_bounds corner 16 steps x 2 branches (cfg > 1) = 32; default 8 steps x 1 branch = 8"
+    }
+  }
+}

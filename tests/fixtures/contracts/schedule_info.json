@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "kind": "photon_schedule_info",
+  "mode": "reference",
+  "scheduler": "sgm_uniform",
+  "steps": 50,
+  "n_sigmas": 51,
+  "dtype": "float32",
+  "computed_on": "cpu",
+  "shift_model": 5.0,
+  "shift_used": 5.0,
+  "multiplier": 1.0,
+  "sigma_first": 1.0,
+  "sigma_second": 0.9959554672241211,
+  "sigma_penultimate": 0.11314225941896439,
+  "sigma_last": 0.0,
+  "sigmas_sha256": "9b2c66b3fb335d998fc03e73ddbafe997fe2d3cf3b187f51629bdf0332f5a536",
+  "is_native_reference": true,
+  "native_reference": {
+    "sha256": "9b2c66b3fb335d998fc03e73ddbafe997fe2d3cf3b187f51629bdf0332f5a536",
+    "equal": true,
+    "bit_equal": true,
+    "max_abs_diff": 0.0,
+    "n_differ": 0
+  },
+  "model_calls_per_step": {
+    "cfg_ne_1": 2,
+    "cfg_eq_1": 1
+  },
+  "validation": {
+    "ok": true,
+    "jump_ratio_max": 3.0,
+    "observed_jump_ratio_max": 1.1447933744323253,
+    "checks": [
+      "finite",
+      "one_dimensional",
+      "strictly_decreasing",
+      "ends_at_zero",
+      "no_duplicates",
+      "within_model_range",
+      "step_ratio"
+    ]
+  },
+  "warnings": []
+}

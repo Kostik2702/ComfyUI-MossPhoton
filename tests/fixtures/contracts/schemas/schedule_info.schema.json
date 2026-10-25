@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "photon_schedule_info.schema.json",
+  "title": "PHOTON_SCHEDULE_INFO (design 2.6)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "mode", "scheduler", "steps", "n_sigmas", "dtype", "computed_on", "shift_model", "shift_used", "multiplier", "sigma_first", "sigma_second", "sigma_penultimate", "sigma_last", "sigmas_sha256", "is_native_reference", "native_reference", "model_calls_per_step", "validation", "warnings"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "photon_schedule_info"},
+    "mode": {"enum": ["reference", "shifted"]},
+    "scheduler": {"enum": ["sgm_uniform", "simple"]},
+    "steps": {"type": "integer", "minimum": 1},
+    "n_sigmas": {"type": "integer", "minimum": 2},
+    "dtype": {"const": "float32"},
+    "computed_on": {"const": "cpu"},
+    "shift_model": {"type": "number"},
+    "shift_used": {"type": "number"},
+    "multiplier": {"type": "number"},
+    "sigma_first": {"type": "number"},
+    "sigma_second": {"type": "number"},
+    "sigma_penultimate": {"type": "number"},
+    "sigma_last": {"type": "number"},
+    "sigmas_sha256": {"$ref": "#/$defs/sha256"},
+    "is_native_reference": {"type": "boolean"},
+    "native_reference": {
+      "type": "object", "additionalProperties": false, "required": ["sha256", "equal", "bit_equal", "max_abs_diff", "n_differ"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"}, "equal": {"type": "boolean"}, "bit_equal": {"type": "boolean"},
+        "max_abs_diff": {"type": "number", "minimum": 0}, "n_differ": {"type": "integer", "minimum": 0}
+      }
+    },
+    "model_calls_per_step": {
+      "type": "object", "additionalProperties": false, "required": ["cfg_ne_1", "cfg_eq_1"],
+      "properties": {"cfg_ne_1": {"const": 2}, "cfg_eq_1": {"const": 1}}
+    },
+    "validation": {
+      "type": "object", "additionalProperties": false, "required": ["ok", "jump_ratio_max", "observed_jump_ratio_max", "checks"],
+      "properties": {
+        "ok": {"const": true},
+        "jump_ratio_max": {"type": "number", "exclusiveMinimum": 1},
+        "observed_jump_ratio_max": {"type": "number", "exclusiveMinimum": 0},
+        "checks": {"type": "array", "items": {"enum": ["finite", "one_dimensional", "strictly_decreasing", "ends_at_zero", "no_duplicates", "within_model_range", "step_ratio"]}, "uniqueItems": true}
+      }
+    },
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/issue"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "issue": {
+      "type": "object", "additionalProperties": false, "required": ["code", "severity", "node", "param", "message", "fix"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "severity": {"enum": ["error", "warning", "info"]},
+        "node": {"type": "string"}, "param": {"type": "string"}, "message": {"type": "string"}, "fix": {"type": "string"},
+        "detail": {"type": "object"}
+      }
+    }
+  }
+}

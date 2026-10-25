@@ -1,0 +1,16 @@
+{
+  "_comment": "Copy to local_models.json (untracked) and put the real file names of YOUR local LoRAs. Or point the env var MOSS_PHOTON_LOCAL_MODELS at a config kept elsewhere.",
+  "lora_dir": null,
+  "files": {
+    "split_qkv_full": "character_a.safetensors",
+    "fused_qkv_gap22": "character_b_fused_qkv.safetensors",
+    "kohya_a": "style_kohya.safetensors",
+    "lokr": "style_lokr.safetensors",
+    "fused_qkv_b": "style_fused_qkv.safetensors",
+    "kohya_distill_sft": "distill_sft_4_steps.safetensors",
+    "foreign_a": "foreign_arch_a.safetensors",
+    "foreign_b": "foreign_arch_b.safetensors",
+    "distill_8_dmd2": "distill_8_steps_a.safetensors",
+    "distill_8_sft": "distill_8_steps_b.safetensors"
+  }
+}

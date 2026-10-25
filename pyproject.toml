@@ -1,0 +1,18 @@
+[project]
+name = "comfyui-mossphoton"
+description = "ComfyUI nodes for MOSS-Image: parity-targeted sampler with versioned presets, LoRA profile, diagnostics and save."
+version = "0.1.0"
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.urls]
+Repository = "https://github.com/Kostik2702/ComfyUI-MossPhoton"
+Issues = "https://github.com/Kostik2702/ComfyUI-MossPhoton/issues"
+
+[tool.comfy]
+# OWNER ACTION: set the publisher id of the Comfy Registry account before `comfy node publish`.
+PublisherId = ""
+DisplayName = "MossPhoton Nodes"
+Icon = ""

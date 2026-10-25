@@ -1,0 +1,1137 @@
+{
+ "id": "e60198b5-c89c-5d34-ad1b-5d6bd16371a2",
+ "revision": 0,
+ "last_node_id": 12,
+ "last_link_id": 17,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "UNETLoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    360,
+    90
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "unet_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "unet_name"
+     },
+     "link": null
+    },
+    {
+     "name": "weight_dtype",
+     "type": "COMBO",
+     "widget": {
+      "name": "weight_dtype"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      2
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "UNETLoader"
+   },
+   "widgets_values": [
+    "moss_image_sft_bf16.safetensors",
+    "default"
+   ]
+  },
+  {
+   "id": 2,
+   "type": "CLIPLoader",
+   "pos": [
+    0,
+    150
+   ],
+   "size": [
+    360,
+    110
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "clip_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "clip_name"
+     },
+     "link": null
+    },
+    {
+     "name": "type",
+     "type": "COMBO",
+     "widget": {
+      "name": "type"
+     },
+     "link": null
+    },
+    {
+     "name": "device",
+     "type": "COMBO",
+     "widget": {
+      "name": "device"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "CLIP",
+     "type": "CLIP",
+     "links": [
+      1
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPLoader"
+   },
+   "widgets_values": [
+    "qwen3.5_9b_bf16.safetensors",
+    "moss_image",
+    "default"
+   ]
+  },
+  {
+   "id": 3,
+   "type": "VAELoader",
+   "pos": [
+    0,
+    320
+   ],
+   "size": [
+    360,
+    70
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "vae_name"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "VAE",
+     "type": "VAE",
+     "links": [
+      10,
+      13
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAELoader"
+   },
+   "widgets_values": [
+    "flux2-vae.safetensors"
+   ]
+  },
+  {
+   "id": 4,
+   "type": "MossPhotonEmptyLatent",
+   "pos": [
+    0,
+    450
+   ],
+   "size": [
+    360,
+    110
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "width",
+     "type": "INT",
+     "widget": {
+      "name": "width"
+     },
+     "link": null
+    },
+    {
+     "name": "height",
+     "type": "INT",
+     "widget": {
+      "name": "height"
+     },
+     "link": null
+    },
+    {
+     "name": "batch_size",
+     "type": "INT",
+     "widget": {
+      "name": "batch_size"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "links": [
+      8
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MossPhotonEmptyLatent"
+   },
+   "widgets_values": [
+    1024,
+    1024,
+    1
+   ]
+  },
+  {
+   "id": 5,
+   "type": "MossPhotonPromptLayout",
+   "pos": [
+    420,
+    0
+   ],
+   "size": [
+    520,
+    470
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "clip",
+     "type": "CLIP",
+     "link": 1
+    },
+    {
+     "name": "positive",
+     "type": "STRING",
+     "widget": {
+      "name": "positive"
+     },
+     "link": null
+    },
+    {
+     "name": "negative",
+     "type": "STRING",
+     "widget": {
+      "name": "negative"
+     },
+     "link": null
+    },
+    {
+     "name": "identity",
+     "type": "STRING",
+     "widget": {
+      "name": "identity"
+     },
+     "link": null
+    },
+    {
+     "name": "wardrobe",
+     "type": "STRING",
+     "widget": {
+      "name": "wardrobe"
+     },
+     "link": null
+    },
+    {
+     "name": "scene",
+     "type": "STRING",
+     "widget": {
+      "name": "scene"
+     },
+     "link": null
+    },
+    {
+     "name": "pose",
+     "type": "STRING",
+     "widget": {
+      "name": "pose"
+     },
+     "link": null
+    },
+    {
+     "name": "camera",
+     "type": "STRING",
+     "widget": {
+      "name": "camera"
+     },
+     "link": null
+    },
+    {
+     "name": "lighting",
+     "type": "STRING",
+     "widget": {
+      "name": "lighting"
+     },
+     "link": null
+    },
+    {
+     "name": "forbidden_changes",
+     "type": "STRING",
+     "widget": {
+      "name": "forbidden_changes"
+     },
+     "link": null
+    },
+    {
+     "name": "layout_json",
+     "type": "STRING",
+     "widget": {
+      "name": "layout_json"
+     },
+     "link": null
+    },
+    {
+     "name": "fingerprint_text_encoder",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "fingerprint_text_encoder"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "links": [
+      6
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "links": [
+      7
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "constraints",
+     "type": "PHOTON_CONSTRAINTS",
+     "links": [
+      9
+     ],
+     "slot_index": 2
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MossPhotonPromptLayout"
+   },
+   "widgets_values": [
+    "A candid photograph of a woman reading a book at a cafe window, soft daylight, 35mm lens.",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    false
+   ]
+  },
+  {
+   "id": 6,
+   "type": "MossPhotonLoRAProfile",
+   "pos": [
+    420,
+    540
+   ],
+   "size": [
+    420,
+    360
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "link": 2
+    },
+    {
+     "name": "lora_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "lora_name"
+     },
+     "link": null
+    },
+    {
+     "name": "strength_model",
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength_model"
+     },
+     "link": null
+    },
+    {
+     "name": "role",
+     "type": "COMBO",
+     "widget": {
+      "name": "role"
+     },
+     "link": null
+    },
+    {
+     "name": "profile",
+     "type": "COMBO",
+     "widget": {
+      "name": "profile"
+     },
+     "link": null
+    },
+    {
+     "name": "trigger",
+     "type": "STRING",
+     "widget": {
+      "name": "trigger"
+     },
+     "link": null
+    },
+    {
+     "name": "profile_in",
+     "type": "PHOTON_IDENTITY_PROFILE",
+     "link": null
+    },
+    {
+     "name": "clip",
+     "type": "CLIP",
+     "link": null
+    },
+    {
+     "name": "apply_text_encoder",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "apply_text_encoder"
+     },
+     "link": null
+    },
+    {
+     "name": "strength_clip",
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength_clip"
+     },
+     "link": null
+    },
+    {
+     "name": "allow_low_coverage",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "allow_low_coverage"
+     },
+     "link": null
+    },
+    {
+     "name": "fingerprint",
+     "type": "COMBO",
+     "widget": {
+      "name": "fingerprint"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "links": [
+      3
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "identity_profile",
+     "type": "PHOTON_IDENTITY_PROFILE",
+     "links": [
+      4
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "clip",
+     "type": "CLIP",
+     "links": null,
+     "slot_index": 2
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MossPhotonLoRAProfile"
+   },
+   "widgets_values": [
+    "lodestones-8-steps-dmd2-lora.safetensors",
+    1.0,
+    "distill",
+    "constant",
+    "",
+    false,
+    0.0,
+    false,
+    "cached_or_compute"
+   ]
+  },
+  {
+   "id": 7,
+   "type": "MossPhotonLoRAProfile",
+   "pos": [
+    420,
+    940
+   ],
+   "size": [
+    420,
+    360
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "link": 3
+    },
+    {
+     "name": "lora_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "lora_name"
+     },
+     "link": null
+    },
+    {
+     "name": "strength_model",
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength_model"
+     },
+     "link": null
+    },
+    {
+     "name": "role",
+     "type": "COMBO",
+     "widget": {
+      "name": "role"
+     },
+     "link": null
+    },
+    {
+     "name": "profile",
+     "type": "COMBO",
+     "widget": {
+      "name": "profile"
+     },
+     "link": null
+    },
+    {
+     "name": "trigger",
+     "type": "STRING",
+     "widget": {
+      "name": "trigger"
+     },
+     "link": null
+    },
+    {
+     "name": "profile_in",
+     "type": "PHOTON_IDENTITY_PROFILE",
+     "link": 4
+    },
+    {
+     "name": "clip",
+     "type": "CLIP",
+     "link": null
+    },
+    {
+     "name": "apply_text_encoder",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "apply_text_encoder"
+     },
+     "link": null
+    },
+    {
+     "name": "strength_clip",
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength_clip"
+     },
+     "link": null
+    },
+    {
+     "name": "allow_low_coverage",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "allow_low_coverage"
+     },
+     "link": null
+    },
+    {
+     "name": "fingerprint",
+     "type": "COMBO",
+     "widget": {
+      "name": "fingerprint"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "links": [
+      5
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "identity_profile",
+     "type": "PHOTON_IDENTITY_PROFILE",
+     "links": [
+      11
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "clip",
+     "type": "CLIP",
+     "links": null,
+     "slot_index": 2
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MossPhotonLoRAProfile"
+   },
+   "widgets_values": [
+    "your_character_lora.safetensors",
+    0.8,
+    "character",
+    "constant",
+    "",
+    false,
+    0.0,
+    false,
+    "cached_or_compute"
+   ]
+  },
+  {
+   "id": 8,
+   "type": "MossPhotonSampler",
+   "pos": [
+    1000,
+    0
+   ],
+   "size": [
+    380,
+    400
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "link": 5
+    },
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 6
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 7
+    },
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "link": 8
+    },
+    {
+     "name": "seed",
+     "type": "INT",
+     "widget": {
+      "name": "seed"
+     },
+     "link": null
+    },
+    {
+     "name": "preset",
+     "type": "COMBO",
+     "widget": {
+      "name": "preset"
+     },
+     "link": null
+    },
+    {
+     "name": "cfg",
+     "type": "FLOAT",
+     "widget": {
+      "name": "cfg"
+     },
+     "link": null
+    },
+    {
+     "name": "identity_profile",
+     "type": "PHOTON_IDENTITY_PROFILE",
+     "link": 11
+    },
+    {
+     "name": "constraints",
+     "type": "PHOTON_CONSTRAINTS",
+     "link": 9
+    },
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": 10
+    },
+    {
+     "name": "preview",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "preview"
+     },
+     "link": null
+    },
+    {
+     "name": "preset_pin",
+     "type": "STRING",
+     "widget": {
+      "name": "preset_pin"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "links": [
+      12
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "report",
+     "type": "PHOTON_REPORT",
+     "links": [
+      14
+     ],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MossPhotonSampler"
+   },
+   "widgets_values": [
+    42,
+    "fixed",
+    "turbo_identity",
+    0.0,
+    true,
+    "turbo_identity@1.0.0#3effb94d"
+   ]
+  },
+  {
+   "id": 9,
+   "type": "VAEDecode",
+   "pos": [
+    1440,
+    0
+   ],
+   "size": [
+    210,
+    50
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "samples",
+     "type": "LATENT",
+     "link": 12
+    },
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": 13
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      15,
+      16
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEDecode"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 10,
+   "type": "MossPhotonDiagnostics",
+   "pos": [
+    1440,
+    120
+   ],
+   "size": [
+    300,
+    130
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "report",
+     "type": "PHOTON_REPORT",
+     "link": 14
+    },
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 15
+    },
+    {
+     "name": "reference_images",
+     "type": "IMAGE",
+     "link": null
+    },
+    {
+     "name": "masks",
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "name": "consent_reference_photos",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "consent_reference_photos"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "report",
+     "type": "PHOTON_REPORT",
+     "links": [
+      17
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "summary",
+     "type": "STRING",
+     "links": null,
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MossPhotonDiagnostics"
+   },
+   "widgets_values": [
+    false
+   ]
+  },
+  {
+   "id": 11,
+   "type": "MossPhotonSaveImage",
+   "pos": [
+    1800,
+    0
+   ],
+   "size": [
+    340,
+    220
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 16
+    },
+    {
+     "name": "report",
+     "type": "PHOTON_REPORT",
+     "link": 17
+    },
+    {
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "name": "format",
+     "type": "COMBO",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "name": "metadata",
+     "type": "COMBO",
+     "widget": {
+      "name": "metadata"
+     },
+     "link": null
+    },
+    {
+     "name": "quality",
+     "type": "INT",
+     "widget": {
+      "name": "quality"
+     },
+     "link": null
+    },
+    {
+     "name": "embed_workflow",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "embed_workflow"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MossPhotonSaveImage"
+   },
+   "widgets_values": [
+    "MossPhoton/turbo_identity",
+    "png",
+    "both",
+    95,
+    false
+   ]
+  },
+  {
+   "id": 12,
+   "type": "Note",
+   "pos": [
+    0,
+    -620
+   ],
+   "size": [
+    940,
+    560
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "ComfyUI 0.42.0 (commit 8f04fd6ec), web frontend 1.55.18, ComfyUI-MossPhoton 0.1.0.\n\nWorkflow: SFT -> LoRA Profile 1 (role distill, 1.0) -> LoRA Profile 2 (role character, profile_in from node 1) -> Sampler preset turbo_identity. Order: distill first, then the character LoRA.\n\nWeights (the workflow downloads nothing: download the files yourself and put them in these folders):\n- models/diffusion_models/moss_image_sft_bf16.safetensors (the official MOSS-Image-SFT bf16 file)\n- models/text_encoders/qwen3.5_9b_bf16.safetensors (the official Qwen3.5 9B bf16 text encoder of MOSS-Image; CLIPLoader type moss_image)\n- models/vae/flux2-vae.safetensors (Flux 2 VAE)\n- models/loras/lodestones-8-steps-dmd2-lora.safetensors (the public lodestones 8-step DMD2 LoRA, distill, sha256 7683fe1f...e6f2; download it and keep this file name)\n- models/loras/your_character_lora.safetensors (PLACEHOLDER name: your character LoRA)\n\nPreset: turbo_identity, catalog status 'candidate' with its OWN gate, not run yet (MP-12 pending). Same sampling as turbo_8step (8 steps, simple, CFG 1, SLG off). Identity under the distill LoRA is unmeasured and no identity score exists in v1.\n\nCharacter strength 0.8 is the example value of the planned parity case C19, not a verified strength. The two orders (distill then character, character then distill) give different results in the last bits and are recorded in the report.\n\nExperimental features: the whole turbo path is experimental (candidate preset, gate not run). Steps 9-16 and CFG above 1.1 are NOT switched on in this graph.\n\nUnproven: DMD2 (trained on Base) on SFT, steps 9-16, CFG above 1.1, identity under distill.\n\nScope: SFT only. Base: not verified in v1 (recognised by hash, no parity or gate run). Calibration stages B-D are not done. If a loader shows 'value not in list', the file is named or placed differently on your machine: open the combo and pick your file. A file in a subfolder of a models folder is listed with a backslash on Windows and a forward slash on Linux."
+   ],
+   "title": "MossPhoton turbo_identity: versions, weights, status (candidate)",
+   "color": "#432",
+   "bgcolor": "#653"
+  }
+ ],
+ "links": [
+  [
+   1,
+   2,
+   0,
+   5,
+   0,
+   "CLIP"
+  ],
+  [
+   2,
+   1,
+   0,
+   6,
+   0,
+   "MODEL"
+  ],
+  [
+   3,
+   6,
+   0,
+   7,
+   0,
+   "MODEL"
+  ],
+  [
+   4,
+   6,
+   1,
+   7,
+   6,
+   "PHOTON_IDENTITY_PROFILE"
+  ],
+  [
+   5,
+   7,
+   0,
+   8,
+   0,
+   "MODEL"
+  ],
+  [
+   6,
+   5,
+   0,
+   8,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   7,
+   5,
+   1,
+   8,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   8,
+   4,
+   0,
+   8,
+   3,
+   "LATENT"
+  ],
+  [
+   9,
+   5,
+   2,
+   8,
+   8,
+   "PHOTON_CONSTRAINTS"
+  ],
+  [
+   10,
+   3,
+   0,
+   8,
+   9,
+   "VAE"
+  ],
+  [
+   11,
+   7,
+   1,
+   8,
+   7,
+   "PHOTON_IDENTITY_PROFILE"
+  ],
+  [
+   12,
+   8,
+   0,
+   9,
+   0,
+   "LATENT"
+  ],
+  [
+   13,
+   3,
+   0,
+   9,
+   1,
+   "VAE"
+  ],
+  [
+   14,
+   8,
+   1,
+   10,
+   0,
+   "PHOTON_REPORT"
+  ],
+  [
+   15,
+   9,
+   0,
+   10,
+   1,
+   "IMAGE"
+  ],
+  [
+   16,
+   9,
+   0,
+   11,
+   0,
+   "IMAGE"
+  ],
+  [
+   17,
+   10,
+   0,
+   11,
+   1,
+   "PHOTON_REPORT"
+  ]
+ ],
+ "groups": [],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.55,
+   "offset": [
+    40,
+    460
+   ]
+  },
+  "frontendVersion": "1.55.18"
+ },
+ "version": 0.4
+}

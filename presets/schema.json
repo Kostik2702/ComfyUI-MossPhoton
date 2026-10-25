@@ -1,0 +1,570 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "moss-photon/presets/schema.json",
+  "title": "MossPhoton preset recipe, schema_version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "preset_version",
+    "id",
+    "status",
+    "description",
+    "model_families",
+    "checkpoint_policy",
+    "sampling",
+    "lora_policy",
+    "constraints",
+    "guards",
+    "postprocess",
+    "budget",
+    "fallback",
+    "calibration",
+    "ui",
+    "sources"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "preset_version": {
+      "type": "string",
+      "pattern": "^[0-9]+[.][0-9]+[.][0-9]+$"
+    },
+    "id": {
+      "enum": [
+        "reference",
+        "photo_safe",
+        "identity_safe",
+        "wardrobe_safe",
+        "scene_safe",
+        "night_photo",
+        "draft_fast",
+        "advanced",
+        "turbo_8step",
+        "turbo_identity"
+      ]
+    },
+    "status": {
+      "enum": [
+        "stable",
+        "candidate",
+        "experimental",
+        "preview_only"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400
+    },
+    "model_families": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "moss-image-base",
+          "moss-image-sft"
+        ]
+      }
+    },
+    "checkpoint_policy": {
+      "enum": [
+        "native-moss-only",
+        "native-moss-verified-only"
+      ]
+    },
+    "sampling": {
+      "$ref": "#/$defs/sampling"
+    },
+    "lora_policy": {
+      "enum": [
+        "use_explicit_user_profile_or_none",
+        "require_explicit_user_profile",
+        "require_distill_profile",
+        "require_distill_and_character_profile"
+      ]
+    },
+    "constraints": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/constraint"
+      }
+    },
+    "guards": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/guard"
+      }
+    },
+    "postprocess": {
+      "type": "array",
+      "maxItems": 0,
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget": {
+      "$ref": "#/$defs/budget"
+    },
+    "fallback": {
+      "enum": [
+        "error_on_incompatibility",
+        "reference_with_warning"
+      ]
+    },
+    "calibration": {
+      "$ref": "#/$defs/calibration"
+    },
+    "ui": {
+      "$ref": "#/$defs/ui"
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source"
+      }
+    }
+  },
+  "$defs": {
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "sampler",
+        "scheduler",
+        "shift",
+        "cfg",
+        "slg_mode",
+        "slg_layers",
+        "slg_start",
+        "slg_end",
+        "restart",
+        "ancestral_noise"
+      ],
+      "properties": {
+        "steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "x-unit": "model forwards per CFG branch (Euler steps)"
+        },
+        "sampler": {
+          "enum": [
+            "euler"
+          ]
+        },
+        "scheduler": {
+          "enum": [
+            "sgm_uniform",
+            "simple"
+          ]
+        },
+        "shift": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "x-unit": "dimensionless flow shift alpha, expected value; the live model_sampling is authoritative"
+        },
+        "cfg": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 30.0,
+          "x-unit": "dimensionless guidance scale g"
+        },
+        "slg_mode": {
+          "enum": [
+            "off",
+            "uncond_skip"
+          ]
+        },
+        "slg_layers": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "x-unit": "0-based index into model.layers (MOSS SFT/Base: 42 layers)"
+        },
+        "slg_start": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "x-unit": "fraction of trajectory in model percent; sigma = model_sampling.percent_to_sigma(value)"
+        },
+        "slg_end": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "x-unit": "fraction of trajectory in model percent; must be >= slg_start"
+        },
+        "restart": {
+          "const": false
+        },
+        "ancestral_noise": {
+          "const": false
+        },
+        "override_bounds": {
+          "$ref": "#/$defs/override_bounds"
+        }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "severity",
+        "reason"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "maxLength": 64
+        },
+        "kind": {
+          "enum": [
+            "requires_lora_role",
+            "requires_block",
+            "forbids_source_latent",
+            "recommends_input",
+            "limits_lora_roles"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "unsupported_model",
+            "invalid_model_sampling",
+            "conflicting_patch",
+            "invalid_latent",
+            "invalid_dimensions",
+            "invalid_conditioning",
+            "invalid_vae",
+            "invalid_schedule",
+            "invalid_layout",
+            "missing_lora",
+            "incompatible_lora",
+            "missing_required_input",
+            "unsupported_source_input",
+            "unsupported_feature",
+            "budget_exceeded",
+            "invalid_preset",
+            "invalid_preset_file",
+            "calibration_required",
+            "preset_version_mismatch",
+            "invalid_override",
+            "non_finite_output",
+            "missing_guard_dependency",
+            "output_error",
+            "none"
+          ]
+        },
+        "role": {
+          "enum": [
+            "character",
+            "style",
+            "wardrobe",
+            "scene",
+            "other",
+            "distill"
+          ]
+        },
+        "block": {
+          "enum": [
+            "identity",
+            "wardrobe",
+            "scene",
+            "pose",
+            "camera",
+            "lighting",
+            "forbidden_changes"
+          ]
+        },
+        "input": {
+          "enum": [
+            "reference_photos"
+          ]
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "character",
+              "style",
+              "wardrobe",
+              "scene",
+              "other",
+              "distill"
+            ]
+          }
+        }
+      }
+    },
+    "guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "required",
+        "requires_dependency",
+        "implemented_in"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "photo_artifacts",
+            "identity_score",
+            "clothing_attributes",
+            "object_count",
+            "shadow_banding"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "requires_dependency": {
+          "enum": [
+            "none",
+            "insightface",
+            "detector",
+            "segmentation"
+          ]
+        },
+        "implemented_in": {
+          "enum": [
+            "v1",
+            "second_queue"
+          ]
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nominal_steps",
+        "extra_forwards",
+        "max_forwards"
+      ],
+      "properties": {
+        "nominal_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "x-unit": "steps (must equal sampling.steps)"
+        },
+        "extra_forwards": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "x-unit": "model forwards beyond steps * branches"
+        },
+        "max_forwards": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "x-unit": "model forwards; null = unlimited"
+        }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "manifest",
+        "state"
+      ],
+      "properties": {
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "manifest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "enum": [
+            "official",
+            "uncalibrated",
+            "calibrated"
+          ]
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "group",
+        "recommended_final",
+        "label",
+        "summary"
+      ],
+      "properties": {
+        "group": {
+          "enum": [
+            "Verified",
+            "Candidate",
+            "Experimental",
+            "Draft"
+          ]
+        },
+        "recommended_final": {
+          "type": "boolean"
+        },
+        "label": {
+          "enum": [
+            "stable",
+            "candidate",
+            "experimental",
+            "draft"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "kind",
+        "source"
+      ],
+      "properties": {
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "kind": {
+          "enum": [
+            "vendor_doc",
+            "vendor_workflow",
+            "model_config",
+            "spec",
+            "derived",
+            "architect_default",
+            "owner_practice"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        }
+      }
+    },
+    "override_bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "cfg"
+      ],
+      "properties": {
+        "steps": {
+          "$ref": "#/$defs/range_int"
+        },
+        "cfg": {
+          "$ref": "#/$defs/range_num"
+        }
+      }
+    },
+    "range_int": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max",
+        "verified_min",
+        "verified_max",
+        "source"
+      ],
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "verified_min": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "verified_max": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      }
+    },
+    "range_num": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max",
+        "verified_min",
+        "verified_max",
+        "source"
+      ],
+      "properties": {
+        "min": {
+          "type": "number",
+          "minimum": 1
+        },
+        "max": {
+          "type": "number",
+          "minimum": 1
+        },
+        "verified_min": {
+          "type": "number",
+          "minimum": 1
+        },
+        "verified_max": {
+          "type": "number",
+          "minimum": 1
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      }
+    }
+  }
+}

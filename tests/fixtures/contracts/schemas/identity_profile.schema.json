@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "photon_identity_profile.schema.json",
+  "title": "PHOTON_IDENTITY_PROFILE (design 2.4)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "stack", "summary", "attachment", "private_paths", "model_identity", "phase_plan", "digest"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "photon_identity_profile"},
+    "stack": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["index", "role", "lora", "strength_model", "strength_clip", "keys_patched", "patch_entries", "applied_to", "weight_profile", "key_format", "coverage", "trained_on", "base_match", "sidecar", "trigger_present", "trigger_hints", "warnings"],
+        "properties": {
+          "index": {"type": "integer", "minimum": 0},
+          "role": {"enum": ["character", "style", "wardrobe", "scene", "other", "distill"]},
+          "lora": {
+            "type": "object", "additionalProperties": false, "required": ["basename", "size", "sha256", "metadata"],
+            "properties": {
+              "basename": {"type": "string", "pattern": "^[^/\\\\]+$"},
+              "size": {"type": "integer", "minimum": 0},
+              "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+              "metadata": {
+                "type": "object", "additionalProperties": false,
+                "properties": {
+                  "ss_base_model_version": {"type": "string"}, "ss_sd_model_name": {"type": "string"}, "software": {"type": "string"},
+                  "ss_network_dim": {"type": ["string", "integer"]}, "modelspec.title": {"type": "string"}
+                }
+              }
+            }
+          },
+          "strength_model": {"type": "number"},
+          "strength_clip": {"type": "number"},
+          "keys_patched": {"type": "integer", "minimum": 0},
+          "patch_entries": {"type": "integer", "minimum": 0},
+          "applied_to": {
+            "type": "object", "additionalProperties": false, "required": ["transformer", "text_encoder"],
+            "properties": {"transformer": {"type": "boolean"}, "text_encoder": {"type": "boolean"}}
+          },
+          "weight_profile": {
+            "type": "object", "required": ["kind"],
+            "properties": {"kind": {"enum": ["constant", "phased"]}, "w": {"type": "number"}}
+          },
+          "key_format": {"enum": ["peft_split_qkv", "peft_fused_qkv", "kohya", "lokr", "unknown"]},
+          "coverage": {
+            "type": "object", "additionalProperties": false,
+            "required": ["tensors_total", "modules_total", "modules_mapped", "ratio", "verdict", "layers_total", "layers_covered", "layers_missing", "te_modules_ignored", "unmapped_examples"],
+            "properties": {
+              "tensors_total": {"type": "integer", "minimum": 0},
+              "modules_total": {"type": "integer", "minimum": 0},
+              "modules_mapped": {"type": "integer", "minimum": 0},
+              "ratio": {"type": "number", "minimum": 0, "maximum": 1},
+              "verdict": {"enum": ["ok", "warn", "error-forced"]},
+              "layers_total": {"type": "integer", "minimum": 0},
+              "layers_covered": {"type": "integer", "minimum": 0},
+              "layers_missing": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+              "te_modules_ignored": {"type": "integer", "minimum": 0},
+              "unmapped_examples": {"type": "array", "items": {"type": "string"}, "maxItems": 5}
+            }
+          },
+          "trained_on": {"enum": ["base", "sft", "unknown"]},
+          "base_match": {"type": ["boolean", "null"]},
+          "sidecar": {
+            "type": "object", "additionalProperties": false,
+            "required": ["found", "curated", "verified_strength", "dataset", "recommended_prompt"],
+            "properties": {
+              "found": {"type": "boolean"}, "curated": {"type": "boolean"},
+              "verified_strength": {
+                "oneOf": [
+                  {"type": "null"},
+                  {"type": "object", "additionalProperties": false, "required": ["min", "max", "recommended"], "properties": {"min": {"type": "number"}, "max": {"type": "number"}, "recommended": {"type": "number"}}}
+                ]
+              },
+              "dataset": {"type": ["object", "null"]},
+              "recommended_prompt": {"type": ["string", "null"]}
+            }
+          },
+          "trigger_present": {"type": "boolean"},
+          "trigger_hints": {"type": "array", "items": {"type": "string"}},
+          "warnings": {"type": "array", "items": {"$ref": "#/$defs/issue"}}
+        }
+      }
+    },
+    "summary": {
+      "type": "object", "additionalProperties": false, "required": ["count", "roles", "has_character", "te_applied", "patch_entries_total"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "roles": {"type": "array", "items": {"enum": ["character", "style", "wardrobe", "scene", "other", "distill"]}},
+        "has_character": {"type": "boolean"},
+        "has_distill": {"type": "boolean"},
+        "te_applied": {"type": "boolean"},
+        "patch_entries_total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "model_identity": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "additionalProperties": false, "required": ["family", "sha256"], "properties": {"family": {"enum": ["moss-image-sft", "moss-image-base", "unknown-moss"]}, "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}}}
+      ]
+    },
+    "phase_plan": {"type": "null"},
+    "digest": {"$ref": "#/$defs/sha256"},
+    "attachment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "patches_uuid", "patch_entries_total", "baseline_entries", "entries"],
+      "properties": {
+        "version": {"const": 1},
+        "patches_uuid": {"type": "string", "minLength": 1},
+        "patch_entries_total": {"type": "integer", "minimum": 0},
+        "baseline_entries": {"type": "integer", "minimum": 0},
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["basename", "size", "sha256", "strength_model", "strength_clip", "te", "patch_entries"],
+            "properties": {
+              "basename": {"type": "string"}, "size": {"type": "integer", "minimum": 0},
+              "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+              "strength_model": {"type": "number"}, "strength_clip": {"type": "number"}, "te": {"type": "boolean"},
+              "patch_entries": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "private_paths": {"const": ["stack[*].trigger_hints"]}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "issue": {
+      "type": "object", "additionalProperties": false, "required": ["code", "severity", "node", "param", "message", "fix"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "severity": {"enum": ["error", "warning", "info"]},
+        "node": {"type": "string"}, "param": {"type": "string"}, "message": {"type": "string"}, "fix": {"type": "string"},
+        "detail": {"type": "object"}
+      }
+    }
+  }
+}

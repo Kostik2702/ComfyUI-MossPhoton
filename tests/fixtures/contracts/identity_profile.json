@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "kind": "photon_identity_profile",
+  "stack": [
+    {
+      "index": 0,
+      "role": "character",
+      "lora": {
+        "basename": "character_a.safetensors",
+        "size": 148697664,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "metadata": {
+          "ss_base_model_version": "moss_image",
+          "software": "ai-toolkit 0.13.34"
+        }
+      },
+      "strength_model": 0.8,
+      "strength_clip": 0.0,
+      "keys_patched": 168,
+      "patch_entries": 252,
+      "applied_to": {
+        "transformer": true,
+        "text_encoder": false
+      },
+      "weight_profile": {
+        "kind": "constant",
+        "w": 0.8
+      },
+      "key_format": "peft_split_qkv",
+      "coverage": {
+        "tensors_total": 504,
+        "modules_total": 252,
+        "modules_mapped": 252,
+        "ratio": 1.0,
+        "verdict": "ok",
+        "layers_total": 42,
+        "layers_covered": 42,
+        "layers_missing": [],
+        "te_modules_ignored": 0,
+        "unmapped_examples": []
+      },
+      "trained_on": "unknown",
+      "base_match": null,
+      "sidecar": {
+        "found": false,
+        "curated": false,
+        "verified_strength": null,
+        "dataset": null,
+        "recommended_prompt": null
+      },
+      "trigger_present": false,
+      "trigger_hints": [],
+      "warnings": []
+    }
+  ],
+  "summary": {
+    "count": 1,
+    "roles": [
+      "character"
+    ],
+    "has_character": true,
+    "te_applied": false,
+    "patch_entries_total": 252
+  },
+  "attachment": {
+    "version": 1,
+    "patches_uuid": "00000000-0000-0000-0000-000000000000",
+    "patch_entries_total": 252,
+    "baseline_entries": 0,
+    "entries": [
+      {
+        "basename": "character_a.safetensors",
+        "size": 148697664,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "strength_model": 0.8,
+        "strength_clip": 0.0,
+        "te": false,
+        "patch_entries": 252
+      }
+    ]
+  },
+  "private_paths": [
+    "stack[*].trigger_hints"
+  ],
+  "model_identity": {
+    "family": "moss-image-sft",
+    "sha256": "f96738d8116d78b7316b57c663d8c98591ddafab7488f48e3099b7655e34ab6f"
+  },
+  "phase_plan": null,
+  "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+}

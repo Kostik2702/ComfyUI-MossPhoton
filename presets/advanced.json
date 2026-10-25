@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "preset_version": "1.0.0",
+  "id": "advanced",
+  "status": "experimental",
+  "description": "Manual research. Starts as a copy of reference; every deviation is an explicit user override and is reported.",
+  "model_families": [
+    "moss-image-base",
+    "moss-image-sft"
+  ],
+  "checkpoint_policy": "native-moss-only",
+  "sampling": {
+    "steps": 50,
+    "sampler": "euler",
+    "scheduler": "sgm_uniform",
+    "shift": 5.0,
+    "cfg": 3.0,
+    "slg_mode": "uncond_skip",
+    "slg_layers": [
+      22
+    ],
+    "slg_start": 0.0,
+    "slg_end": 1.0,
+    "restart": false,
+    "ancestral_noise": false
+  },
+  "lora_policy": "use_explicit_user_profile_or_none",
+  "constraints": [],
+  "guards": [],
+  "postprocess": [],
+  "budget": {
+    "nominal_steps": 50,
+    "extra_forwards": 0,
+    "max_forwards": null
+  },
+  "fallback": "reference_with_warning",
+  "calibration": {
+    "reference": "preset:reference@1.0.0",
+    "manifest": null,
+    "state": "uncalibrated"
+  },
+  "ui": {
+    "group": "Experimental",
+    "recommended_final": false,
+    "label": "experimental",
+    "summary": "Manual research starting from a copy of reference. Never stable automatically."
+  },
+  "sources": {
+    "sampling.steps": {
+      "unit": "Euler steps",
+      "kind": "vendor_workflow",
+      "source": "OpenMOSS comfyui/README.md lines 44-45 (50 steps) and moss-image.json node 16; USERGUIDE steps >= 50 (01-investigation 5.1-5.3)"
+    },
+    "sampling.shift": {
+      "unit": "dimensionless",
+      "kind": "model_config",
+      "source": "comfy/supported_models.py:2042-2045 sampling_settings shift 5.0; OpenMOSS README shift 5 (01-investigation 1.1)"
+    },
+    "sampling.cfg": {
+      "unit": "dimensionless",
+      "kind": "vendor_doc",
+      "source": "OpenMOSS USERGUIDE default CFG 3.0, range 3-6 (01-investigation 5.3)"
+    },
+    "sampling.slg_layers": {
+      "unit": "layer index",
+      "kind": "vendor_doc",
+      "source": "OpenMOSS USERGUIDE two-pass SLG: uncond skip layer 22, 0-indexed (01-investigation 4.1)"
+    },
+    "sampling.slg_start": {
+      "unit": "fraction",
+      "kind": "vendor_workflow",
+      "source": "OpenMOSS moss-image.json node 13 widgets [double '', single '22', start 0, end 1] (01-investigation 4.1)"
+    },
+    "sampling.slg_end": {
+      "unit": "fraction",
+      "kind": "vendor_workflow",
+      "source": "OpenMOSS moss-image.json node 13 widgets [double '', single '22', start 0, end 1] (01-investigation 4.1)"
+    },
+    "budget.nominal_steps": {
+      "unit": "Euler steps",
+      "kind": "derived",
+      "source": "equals sampling.steps"
+    },
+    "budget.extra_forwards": {
+      "unit": "model forwards",
+      "kind": "derived",
+      "source": "no corrections, restart or detailer in v1 (SPEC 5, 6.1)"
+    }
+  }
+}

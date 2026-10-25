@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "photon_constraints.schema.json",
+  "title": "PHOTON_CONSTRAINTS (design 2.5)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "compiler_version", "private_paths", "user_text", "negative_text", "compiled_positive", "fields", "blocks_present", "prompt_sha256", "layout", "conflicts", "warnings", "text_encoder"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "photon_constraints"},
+    "compiler_version": {"type": "integer", "minimum": 1},
+    "private_paths": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "user_text": {"type": "string"},
+    "negative_text": {"type": "string"},
+    "compiled_positive": {"type": "string"},
+    "fields": {"$ref": "#/$defs/blocks_text"},
+    "blocks_present": {"$ref": "#/$defs/blocks_flag"},
+    "prompt_sha256": {
+      "type": "object", "additionalProperties": false, "required": ["positive", "negative"],
+      "properties": {"positive": {"$ref": "#/$defs/sha256"}, "negative": {"$ref": "#/$defs/sha256"}}
+    },
+    "layout": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["items", "bbox_coord_space", "bbox_format", "bboxes", "extent", "experimental"],
+          "properties": {
+            "items": {"type": "integer", "minimum": 0},
+            "bbox_coord_space": {"const": "abs_centralized"},
+            "bbox_format": {"const": "yxyx"},
+            "bboxes": {"type": "array", "items": {"$ref": "#/$defs/bbox"}},
+            "extent": {"$ref": "#/$defs/bbox"},
+            "experimental": {"const": true}
+          }
+        }
+      ]
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["attribute", "kind", "sources", "message"],
+        "properties": {
+          "attribute": {"type": "string"}, "kind": {"type": "string"}, "message": {"type": "string"},
+          "sources": {
+            "type": "array",
+            "items": {"type": "object", "additionalProperties": false, "required": ["field", "value"], "properties": {"field": {"type": "string"}, "value": {"type": "string"}}}
+          }
+        }
+      }
+    },
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "text_encoder": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false, "required": ["basename", "size", "sha256", "official", "fingerprint_source"],
+          "properties": {
+            "basename": {"type": "string", "pattern": "^[^/\\\\]+$"},
+            "size": {"type": "integer", "minimum": 0},
+            "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+            "official": {"type": ["boolean", "null"]},
+            "fingerprint_source": {"type": "string"}
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "bbox": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4},
+    "blocks_text": {
+      "type": "object", "additionalProperties": false,
+      "required": ["identity", "wardrobe", "scene", "pose", "camera", "lighting", "forbidden_changes"],
+      "properties": {
+        "identity": {"type": "string"}, "wardrobe": {"type": "string"}, "scene": {"type": "string"}, "pose": {"type": "string"},
+        "camera": {"type": "string"}, "lighting": {"type": "string"}, "forbidden_changes": {"type": "string"}
+      }
+    },
+    "blocks_flag": {
+      "type": "object", "additionalProperties": false,
+      "required": ["identity", "wardrobe", "scene", "pose", "camera", "lighting", "forbidden_changes"],
+      "properties": {
+        "identity": {"type": "boolean"}, "wardrobe": {"type": "boolean"}, "scene": {"type": "boolean"}, "pose": {"type": "boolean"},
+        "camera": {"type": "boolean"}, "lighting": {"type": "boolean"}, "forbidden_changes": {"type": "boolean"}
+      }
+    },
+    "issue": {
+      "type": "object", "additionalProperties": false, "required": ["code", "severity", "node", "param", "message", "fix"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "severity": {"enum": ["error", "warning", "info"]},
+        "node": {"type": "string"}, "param": {"type": "string"}, "message": {"type": "string"}, "fix": {"type": "string"},
+        "detail": {"type": "object"}
+      }
+    }
+  }
+}

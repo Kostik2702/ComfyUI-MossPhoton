@@ -1,0 +1,1013 @@
+{
+ "comfyui_version": "0.42.0",
+ "frontend_virtual_types": [
+  "Note",
+  "MarkdownNote"
+ ],
+ "nodes": {
+  "CLIPLoader": {
+   "category": "model/loaders",
+   "display_name": "Load CLIP",
+   "input": {
+    "optional": {
+     "device": [
+      [
+       "default",
+       "cpu"
+      ],
+      {
+       "advanced": true
+      }
+     ]
+    },
+    "required": {
+     "clip_name": [
+      [
+       "qwen3.5_9b_bf16.safetensors"
+      ]
+     ],
+     "type": [
+      [
+       "stable_diffusion",
+       "stable_cascade",
+       "sd3",
+       "stable_audio",
+       "mochi",
+       "ltxv",
+       "pixart",
+       "cosmos",
+       "lumina2",
+       "wan",
+       "hidream",
+       "chroma",
+       "ace",
+       "omnigen2",
+       "qwen_image",
+       "hunyuan_image",
+       "flux2",
+       "ovis",
+       "longcat_image",
+       "cogvideox",
+       "lens",
+       "pixeldit",
+       "ideogram4",
+       "boogu",
+       "krea2",
+       "joyimage",
+       "mage",
+       "minimax",
+       "yue2",
+       "flux3",
+       "moss_image"
+      ]
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "device"
+    ],
+    "required": [
+     "clip_name",
+     "type"
+    ]
+   },
+   "output": [
+    "CLIP"
+   ],
+   "output_name": [
+    "CLIP"
+   ],
+   "output_node": false
+  },
+  "MossPhotonDiagnostics": {
+   "category": "MossPhoton/3 Diagnostics",
+   "display_name": "Moss Photon Diagnostics",
+   "input": {
+    "optional": {
+     "consent_reference_photos": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "image": [
+      "IMAGE",
+      {}
+     ],
+     "masks": [
+      "MASK",
+      {}
+     ],
+     "reference_images": [
+      "IMAGE",
+      {}
+     ]
+    },
+    "required": {
+     "report": [
+      "PHOTON_REPORT",
+      {}
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "image",
+     "reference_images",
+     "masks",
+     "consent_reference_photos"
+    ],
+    "required": [
+     "report"
+    ]
+   },
+   "output": [
+    "PHOTON_REPORT",
+    "STRING"
+   ],
+   "output_name": [
+    "report",
+    "summary"
+   ],
+   "output_node": true
+  },
+  "MossPhotonEmptyLatent": {
+   "category": "MossPhoton/1 Setup",
+   "display_name": "Moss Photon Empty Latent",
+   "input": {
+    "required": {
+     "batch_size": [
+      "INT",
+      {
+       "default": 1,
+       "max": 64,
+       "min": 1
+      }
+     ],
+     "height": [
+      "INT",
+      {
+       "default": 1024,
+       "max": 8192,
+       "min": 64,
+       "step": 16
+      }
+     ],
+     "width": [
+      "INT",
+      {
+       "default": 1024,
+       "max": 8192,
+       "min": 64,
+       "step": 16
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "width",
+     "height",
+     "batch_size"
+    ]
+   },
+   "output": [
+    "LATENT"
+   ],
+   "output_name": [
+    "latent"
+   ],
+   "output_node": false
+  },
+  "MossPhotonLoRAProfile": {
+   "category": "MossPhoton/1 Setup",
+   "display_name": "Moss Photon LoRA Profile",
+   "input": {
+    "optional": {
+     "allow_low_coverage": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "apply_text_encoder": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "clip": [
+      "CLIP",
+      {}
+     ],
+     "fingerprint": [
+      [
+       "cached_or_compute",
+       "cached_only",
+       "off"
+      ],
+      {
+       "default": "cached_or_compute"
+      }
+     ],
+     "profile_in": [
+      "PHOTON_IDENTITY_PROFILE",
+      {}
+     ],
+     "strength_clip": [
+      "FLOAT",
+      {
+       "default": 0.0,
+       "max": 10.0,
+       "min": -10.0,
+       "step": 0.01
+      }
+     ],
+     "trigger": [
+      "STRING",
+      {
+       "default": ""
+      }
+     ]
+    },
+    "required": {
+     "lora_name": [
+      [
+       "none",
+       "lodestones-8-steps-dmd2-lora.safetensors",
+       "your_character_lora.safetensors",
+       "your_second_lora.safetensors"
+      ],
+      {
+       "default": "none"
+      }
+     ],
+     "model": [
+      "MODEL",
+      {}
+     ],
+     "profile": [
+      [
+       "constant"
+      ],
+      {
+       "default": "constant"
+      }
+     ],
+     "role": [
+      [
+       "character",
+       "style",
+       "wardrobe",
+       "scene",
+       "other",
+       "distill"
+      ],
+      {
+       "default": "character"
+      }
+     ],
+     "strength_model": [
+      "FLOAT",
+      {
+       "default": 1.0,
+       "max": 10.0,
+       "min": -10.0,
+       "step": 0.01
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "trigger",
+     "profile_in",
+     "clip",
+     "apply_text_encoder",
+     "strength_clip",
+     "allow_low_coverage",
+     "fingerprint"
+    ],
+    "required": [
+     "model",
+     "lora_name",
+     "strength_model",
+     "role",
+     "profile"
+    ]
+   },
+   "output": [
+    "MODEL",
+    "PHOTON_IDENTITY_PROFILE",
+    "CLIP"
+   ],
+   "output_name": [
+    "model",
+    "identity_profile",
+    "clip"
+   ],
+   "output_node": false
+  },
+  "MossPhotonPromptLayout": {
+   "category": "MossPhoton/1 Setup",
+   "display_name": "Moss Photon Prompt & Layout",
+   "input": {
+    "optional": {
+     "camera": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "fingerprint_text_encoder": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "forbidden_changes": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "identity": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "layout_json": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "lighting": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "pose": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "scene": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "wardrobe": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ]
+    },
+    "required": {
+     "clip": [
+      "CLIP",
+      {}
+     ],
+     "negative": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ],
+     "positive": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "identity",
+     "wardrobe",
+     "scene",
+     "pose",
+     "camera",
+     "lighting",
+     "forbidden_changes",
+     "layout_json",
+     "fingerprint_text_encoder"
+    ],
+    "required": [
+     "clip",
+     "positive",
+     "negative"
+    ]
+   },
+   "output": [
+    "CONDITIONING",
+    "CONDITIONING",
+    "PHOTON_CONSTRAINTS"
+   ],
+   "output_name": [
+    "positive",
+    "negative",
+    "constraints"
+   ],
+   "output_node": false
+  },
+  "MossPhotonSampler": {
+   "category": "MossPhoton/2 Sampling",
+   "display_name": "Moss Photon Sampler",
+   "input": {
+    "optional": {
+     "constraints": [
+      "PHOTON_CONSTRAINTS",
+      {}
+     ],
+     "identity_profile": [
+      "PHOTON_IDENTITY_PROFILE",
+      {}
+     ],
+     "preset_pin": [
+      "STRING",
+      {
+       "default": ""
+      }
+     ],
+     "preview": [
+      "BOOLEAN",
+      {
+       "default": true
+      }
+     ],
+     "vae": [
+      "VAE",
+      {}
+     ]
+    },
+    "required": {
+     "cfg": [
+      "FLOAT",
+      {
+       "default": 0.0,
+       "max": 30.0,
+       "min": 0.0,
+       "round": 0.01,
+       "step": 0.1
+      }
+     ],
+     "latent": [
+      "LATENT",
+      {}
+     ],
+     "model": [
+      "MODEL",
+      {}
+     ],
+     "negative": [
+      "CONDITIONING",
+      {}
+     ],
+     "positive": [
+      "CONDITIONING",
+      {}
+     ],
+     "preset": [
+      [
+       "reference",
+       "photo_safe",
+       "identity_safe",
+       "wardrobe_safe",
+       "scene_safe",
+       "night_photo",
+       "draft_fast",
+       "advanced",
+       "turbo_8step",
+       "turbo_identity"
+      ],
+      {
+       "default": "reference"
+      }
+     ],
+     "seed": [
+      "INT",
+      {
+       "control_after_generate": true,
+       "default": 0,
+       "max": 18446744073709551615,
+       "min": 0
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "identity_profile",
+     "constraints",
+     "vae",
+     "preview",
+     "preset_pin"
+    ],
+    "required": [
+     "model",
+     "positive",
+     "negative",
+     "latent",
+     "seed",
+     "preset",
+     "cfg"
+    ]
+   },
+   "output": [
+    "LATENT",
+    "PHOTON_REPORT"
+   ],
+   "output_name": [
+    "latent",
+    "report"
+   ],
+   "output_node": false
+  },
+  "MossPhotonSamplerAdvanced": {
+   "category": "MossPhoton/2 Sampling",
+   "display_name": "Moss Photon Sampler (Advanced)",
+   "input": {
+    "optional": {
+     "constraints": [
+      "PHOTON_CONSTRAINTS",
+      {}
+     ],
+     "identity_profile": [
+      "PHOTON_IDENTITY_PROFILE",
+      {}
+     ],
+     "preset_pin": [
+      "STRING",
+      {
+       "default": ""
+      }
+     ],
+     "preview": [
+      "BOOLEAN",
+      {
+       "default": true
+      }
+     ],
+     "report_step_times": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "sigmas": [
+      "SIGMAS",
+      {}
+     ],
+     "vae": [
+      "VAE",
+      {}
+     ]
+    },
+    "required": {
+     "cfg": [
+      "FLOAT",
+      {
+       "default": 0.0,
+       "max": 30.0,
+       "min": 0.0,
+       "round": 0.01,
+       "step": 0.1
+      }
+     ],
+     "cfg_profile": [
+      [
+       "constant"
+      ],
+      {
+       "default": "constant"
+      }
+     ],
+     "fingerprint": [
+      [
+       "cached_or_compute",
+       "cached_only",
+       "off"
+      ],
+      {
+       "default": "cached_or_compute"
+      }
+     ],
+     "latent": [
+      "LATENT",
+      {}
+     ],
+     "max_forwards": [
+      "INT",
+      {
+       "default": 0,
+       "max": 100000,
+       "min": 0
+      }
+     ],
+     "model": [
+      "MODEL",
+      {}
+     ],
+     "negative": [
+      "CONDITIONING",
+      {}
+     ],
+     "noise_policy": [
+      [
+       "native",
+       "seed_plus_i"
+      ],
+      {
+       "default": "native"
+      }
+     ],
+     "positive": [
+      "CONDITIONING",
+      {}
+     ],
+     "preset": [
+      [
+       "reference",
+       "photo_safe",
+       "identity_safe",
+       "wardrobe_safe",
+       "scene_safe",
+       "night_photo",
+       "draft_fast",
+       "advanced",
+       "turbo_8step",
+       "turbo_identity"
+      ],
+      {
+       "default": "reference"
+      }
+     ],
+     "seed": [
+      "INT",
+      {
+       "control_after_generate": true,
+       "default": 0,
+       "max": 18446744073709551615,
+       "min": 0
+      }
+     ],
+     "slg_end": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 1.0,
+       "min": -1.0,
+       "step": 0.01
+      }
+     ],
+     "slg_layers": [
+      "STRING",
+      {
+       "default": ""
+      }
+     ],
+     "slg_mode": [
+      [
+       "from_preset",
+       "off",
+       "uncond_skip"
+      ],
+      {
+       "default": "from_preset"
+      }
+     ],
+     "slg_start": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 1.0,
+       "min": -1.0,
+       "step": 0.01
+      }
+     ],
+     "solver": [
+      [
+       "euler"
+      ],
+      {
+       "default": "euler"
+      }
+     ],
+     "steps": [
+      "INT",
+      {
+       "default": 0,
+       "max": 1000,
+       "min": 0
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "identity_profile",
+     "constraints",
+     "vae",
+     "preview",
+     "preset_pin",
+     "sigmas",
+     "report_step_times"
+    ],
+    "required": [
+     "model",
+     "positive",
+     "negative",
+     "latent",
+     "seed",
+     "preset",
+     "cfg",
+     "steps",
+     "slg_mode",
+     "slg_layers",
+     "slg_start",
+     "slg_end",
+     "solver",
+     "cfg_profile",
+     "noise_policy",
+     "max_forwards",
+     "fingerprint"
+    ]
+   },
+   "output": [
+    "LATENT",
+    "PHOTON_REPORT"
+   ],
+   "output_name": [
+    "latent",
+    "report"
+   ],
+   "output_node": false
+  },
+  "MossPhotonSaveImage": {
+   "category": "MossPhoton/4 Output",
+   "display_name": "Moss Photon Save Image",
+   "input": {
+    "hidden": {
+     "extra_pnginfo": "EXTRA_PNGINFO",
+     "prompt": "PROMPT"
+    },
+    "optional": {
+     "embed_workflow": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "quality": [
+      "INT",
+      {
+       "default": 95,
+       "max": 100,
+       "min": 1
+      }
+     ]
+    },
+    "required": {
+     "filename_prefix": [
+      "STRING",
+      {
+       "default": "MossPhoton/img"
+      }
+     ],
+     "format": [
+      [
+       "png",
+       "jpeg",
+       "webp"
+      ],
+      {
+       "default": "png"
+      }
+     ],
+     "image": [
+      "IMAGE",
+      {}
+     ],
+     "metadata": [
+      [
+       "both",
+       "embedded",
+       "sidecar",
+       "none"
+      ],
+      {
+       "default": "both"
+      }
+     ],
+     "report": [
+      "PHOTON_REPORT",
+      {}
+     ]
+    }
+   },
+   "input_order": {
+    "hidden": [
+     "prompt",
+     "extra_pnginfo"
+    ],
+    "optional": [
+     "quality",
+     "embed_workflow"
+    ],
+    "required": [
+     "image",
+     "report",
+     "filename_prefix",
+     "format",
+     "metadata"
+    ]
+   },
+   "output": [],
+   "output_name": [],
+   "output_node": true
+  },
+  "MossPhotonSchedule": {
+   "category": "MossPhoton/2 Sampling",
+   "display_name": "Moss Photon Schedule",
+   "input": {
+    "required": {
+     "latent": [
+      "LATENT",
+      {}
+     ],
+     "mode": [
+      [
+       "reference",
+       "shifted"
+      ],
+      {
+       "default": "reference"
+      }
+     ],
+     "model": [
+      "MODEL",
+      {}
+     ],
+     "scheduler": [
+      [
+       "sgm_uniform",
+       "simple"
+      ],
+      {
+       "default": "sgm_uniform"
+      }
+     ],
+     "shift": [
+      "FLOAT",
+      {
+       "default": 5.0,
+       "max": 100.0,
+       "min": 0.01,
+       "step": 0.01
+      }
+     ],
+     "steps": [
+      "INT",
+      {
+       "default": 50,
+       "max": 1000,
+       "min": 1
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "model",
+     "latent",
+     "steps",
+     "shift",
+     "mode",
+     "scheduler"
+    ]
+   },
+   "output": [
+    "SIGMAS",
+    "PHOTON_SCHEDULE_INFO"
+   ],
+   "output_name": [
+    "sigmas",
+    "schedule_info"
+   ],
+   "output_node": false
+  },
+  "UNETLoader": {
+   "category": "model/loaders",
+   "display_name": "Load Diffusion Model",
+   "input": {
+    "required": {
+     "unet_name": [
+      [
+       "moss_image_sft_bf16.safetensors"
+      ]
+     ],
+     "weight_dtype": [
+      [
+       "default",
+       "fp8_e4m3fn",
+       "fp8_e4m3fn_fast",
+       "fp8_e5m2"
+      ],
+      {
+       "advanced": true
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "unet_name",
+     "weight_dtype"
+    ]
+   },
+   "output": [
+    "MODEL"
+   ],
+   "output_name": [
+    "MODEL"
+   ],
+   "output_node": false
+  },
+  "VAEDecode": {
+   "category": "model/latent",
+   "display_name": "VAE Decode",
+   "input": {
+    "required": {
+     "samples": [
+      "LATENT",
+      {}
+     ],
+     "vae": [
+      "VAE",
+      {}
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "samples",
+     "vae"
+    ]
+   },
+   "output": [
+    "IMAGE"
+   ],
+   "output_name": [
+    "IMAGE"
+   ],
+   "output_node": false
+  },
+  "VAELoader": {
+   "category": "model/loaders",
+   "display_name": "Load VAE",
+   "input": {
+    "required": {
+     "vae_name": [
+      [
+       "flux2-vae.safetensors"
+      ]
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "vae_name"
+    ]
+   },
+   "output": [
+    "VAE"
+   ],
+   "output_name": [
+    "VAE"
+   ],
+   "output_node": false
+  }
+ },
+ "recorded_utc": "2026-10-25T11:25:32Z",
+ "required_frontend_version": "1.55.18",
+ "schema": 1,
+ "source": "GET /object_info/<type> and /system_stats of a running ComfyUI (research/refresh_object_info_snapshot.py)"
+}

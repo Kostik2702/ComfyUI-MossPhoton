@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "kind": "photon_constraints",
+  "compiler_version": 1,
+  "private_paths": [
+    "fields",
+    "user_text",
+    "compiled_positive",
+    "negative_text"
+  ],
+  "user_text": "A woman in a kitchen, morning light.",
+  "negative_text": "",
+  "compiled_positive": "A woman in a kitchen, morning light.\n\nSubject: Anna, short dark hair\nClothing: red wool sweater\nScene: small kitchen, wooden table",
+  "fields": {
+    "identity": "Anna, short dark hair",
+    "wardrobe": "red wool sweater",
+    "scene": "small kitchen, wooden table",
+    "pose": "",
+    "camera": "",
+    "lighting": "",
+    "forbidden_changes": ""
+  },
+  "blocks_present": {
+    "identity": true,
+    "wardrobe": true,
+    "scene": true,
+    "pose": false,
+    "camera": false,
+    "lighting": false,
+    "forbidden_changes": false
+  },
+  "prompt_sha256": {
+    "positive": "0000000000000000000000000000000000000000000000000000000000000000",
+    "negative": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "layout": null,
+  "conflicts": [],
+  "warnings": [],
+  "text_encoder": {
+    "basename": "qwen3.5_9b_bf16.safetensors",
+    "size": 19306312328,
+    "sha256": null,
+    "official": null,
+    "fingerprint_source": "unavailable"
+  }
+}

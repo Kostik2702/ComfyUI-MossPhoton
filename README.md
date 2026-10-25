@@ -24,6 +24,7 @@ presets carry the vendor's reference recipe; the pack makes no claim about image
 | Calibration stages B to D | not done |
 | Identity / clothing scoring, masked detailer, upscale, seed drafts | not in v1 |
 | Layout JSON, text-encoder LoRA, Advanced sampler | experimental |
+| Phased LoRA weight (`profile = phased`, Advanced sampler only) | experimental, outside every verification; clone per level, label `not_reference`; with a constant weight it is bit-exact to the stock loader in one GPU smoke case; see [USAGE](docs/USAGE.md), 3.3.1 |
 
 ## Quick start
 

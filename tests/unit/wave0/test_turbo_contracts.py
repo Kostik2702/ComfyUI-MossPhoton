@@ -51,6 +51,10 @@ NEW_CODES = {
     "reference_photos_recommended": "info",
     "model_family_unverified": "warning",
     "turbo_slg_experimental": "warning",
+    # MP-16: phased LoRA weight by sigma progress (MossPhotonSamplerAdvanced only).
+    "phase_lora_experimental": "warning",
+    # MP-50: a known distill LoRA loaded with a role other than distill.
+    "distill_lora_role_mismatch": "warning",
 }
 
 DMD2_SHA = "7683fe1fb51f73f5d690f24dd6b7f46f31ab9a9873729a854ac5c9a420ffe6f2"

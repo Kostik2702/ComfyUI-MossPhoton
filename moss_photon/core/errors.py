@@ -271,6 +271,10 @@ _STATUS_SEVERITY = (
     # M7 the preset's model_families gate; M2 SLG on a turbo preset (MossPhotonSamplerAdvanced only).
     ("reference_photos_recommended", "info"), ("model_family_unverified", "warning"),
     ("turbo_slg_experimental", "warning"),
+    # MP-16: phased LoRA weight by sigma progress (MossPhotonSamplerAdvanced only), experimental.
+    ("phase_lora_experimental", "warning"),
+    # MP-50: a file the pack knows as a distill LoRA (consts.KNOWN_DISTILL_LORAS) loaded with another role.
+    ("distill_lora_role_mismatch", "warning"),
 )
 
 

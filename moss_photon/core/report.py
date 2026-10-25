@@ -70,6 +70,9 @@ def _recipe_material(report):
             material[path] = None
         else:
             material[path] = _get(report, path)
+    phase = _get(report, "lora.phase")
+    if phase is not None:  # only a phased run has the key, so the hash of every other run is unchanged
+        material["lora.phase"] = phase
     return material
 
 
@@ -235,6 +238,15 @@ _ISSUE = _O({"code": "code", "severity": _E("error", "warning", "info"), "node":
              "message": "str", "fix": "str"}, {"detail": "obj"})
 _COND = _O({"entries": "int", "tokens": _A("int"), "dim": "int", "sha256": "sha"})
 
+# MP-16 (experimental, additive): lora.phase exists only in a run with a phased LoRA weight.
+_PHASE = _O({
+    "mechanism": _E("clone_per_level"), "kind": _E("smoothstep_by_sigma_progress"),
+    "progress": _E("cumulative_abs_dsigma"), "apply_order": _E("after_constant_adapters"),
+    "stack_index": "int", "w0": "num", "w1": "num", "a": "num", "b": "num", "levels": "int", "steps": "int",
+    "planned_sha256": "sha", "weights_sha256": "sha",
+    "segments": _A(_O({"first_step": "int", "last_step": "int", "weight": "num"}), 1),
+    "clones_built": "int"})
+
 _SPEC = _O({
     "schema_version": _E(1),
     "kind": _E("photon_report"),
@@ -286,7 +298,8 @@ _SPEC = _O({
         "foreign_patches": _O({
             "entries_expected": "int", "entries_observed": "int", "baseline_entries": "int", "uuid_match": "bool",
             "extra_entries": "int", "keys_sample": _A("str", 0, 20)}),
-        "te_applied": "bool", "profile_digest": "sha|null"}),
+        "te_applied": "bool", "profile_digest": "sha|null"}, {
+        "phase": _PHASE}),
     "guards": _O({
         "finite_check": _E("passed", "failed", "skipped"),
         "items": _A(_O({"id": "str", "status": _E("not_run"),
@@ -430,6 +443,11 @@ def format_summary(report):
     stack = _get(report, "lora.stack")
     if stack:
         lines.append("lora: %d adapter(s)" % len(stack))
+    phase = _get(report, "lora.phase")
+    if isinstance(phase, dict):
+        lines.append("phased lora (experimental): stack[%s] %s -> %s over progress %s..%s, %s segment(s)" % (
+            phase.get("stack_index"), phase.get("w0"), phase.get("w1"), phase.get("a"), phase.get("b"),
+            len(phase.get("segments") or [])))
     warns = report.get("warnings") or []
     if warns:
         lines.append("warnings: " + ", ".join(str(w.get("code")) for w in warns if isinstance(w, dict)))

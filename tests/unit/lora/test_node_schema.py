@@ -31,7 +31,7 @@ class InputTypesTest(unittest.TestCase):
         required, optional = spec["required"], spec["optional"]
         self.assertEqual(list(required), ["model", "lora_name", "strength_model", "role", "profile"])
         self.assertEqual(list(optional), ["trigger", "profile_in", "clip", "apply_text_encoder", "strength_clip",
-                                          "allow_low_coverage", "fingerprint"])
+                                          "allow_low_coverage", "fingerprint", "w0", "w1", "a", "b"])
         self.assertEqual(required["model"][0], "MODEL")
         choices, opts = required["lora_name"]
         self.assertEqual((choices, opts["default"]), (["none", "a.safetensors", "sub/b.safetensors"], "none"))
@@ -40,7 +40,7 @@ class InputTypesTest(unittest.TestCase):
         roles, opts = required["role"]
         self.assertEqual((roles, opts["default"]), (["character", "style", "wardrobe", "scene", "other", "distill"], "character"))
         profiles, opts = required["profile"]
-        self.assertEqual((profiles, opts["default"]), (["constant"], "constant"))
+        self.assertEqual((profiles, opts["default"]), (["constant", "phased"], "constant"))
         self.assertEqual(optional["trigger"][0], "STRING")
         self.assertEqual(optional["trigger"][1]["default"], "")
         self.assertEqual(optional["profile_in"][0], "PHOTON_IDENTITY_PROFILE")
@@ -51,6 +51,11 @@ class InputTypesTest(unittest.TestCase):
         self.assertEqual((optional["allow_low_coverage"][0], optional["allow_low_coverage"][1]["default"]), ("BOOLEAN", False))
         modes, opts = optional["fingerprint"]
         self.assertEqual((modes, opts["default"]), (["cached_or_compute", "cached_only", "off"], "cached_or_compute"))
+        for name, default, low, high in (("w0", 0.3, -10.0, 10.0), ("w1", 0.9, -10.0, 10.0), ("a", 0.2, 0.0, 1.0),
+                                         ("b", 0.6, 0.0, 1.0)):
+            kind, opts = optional[name]
+            self.assertEqual((kind, opts["default"], opts["min"], opts["max"], opts["step"]),
+                             ("FLOAT", default, low, high, 0.01), name)
 
     def test_every_widget_has_a_tooltip(self):
         with mock.patch.dict(sys.modules, {"folder_paths": fake_folder_paths([])}):
@@ -133,17 +138,39 @@ class RefusalsTest(unittest.TestCase):
         args.update(kw)
         return node.MossPhotonLoRAProfile().apply(FakeModel(), **args)
 
-    def test_only_the_constant_weight_profile_exists_in_v1(self):
-        for kind in ("phased", "ramp", ""):
+    def test_only_constant_and_phased_weight_profiles_exist(self):
+        for kind in ("ramp", ""):
             with self.subTest(kind=kind):
                 with self.assertRaises(errors.UnsupportedFeature) as ctx:
                     self.apply(profile=kind)
                 self.assertEqual(ctx.exception.code, "unsupported_feature")
                 self.assertIn("constant", str(ctx.exception))
 
-    def test_even_a_pass_through_refuses_a_non_constant_profile(self):
+    def test_even_a_pass_through_refuses_an_unknown_profile(self):
         with self.assertRaises(errors.UnsupportedFeature):
-            self.apply(lora_name="none", profile="phased")
+            self.apply(lora_name="none", profile="ramp")
+
+    def test_a_bad_phase_plan_is_refused_before_anything_else(self):
+        for kw in ({"w0": float("nan")}, {"w1": 11.0}, {"a": 0.6, "b": 0.2}, {"a": 0.3, "b": 0.3}, {"a": -0.1},
+                   {"b": 1.5}):
+            with self.subTest(kw=kw):
+                with self.assertRaises(errors.UnsupportedFeature) as ctx:
+                    self.apply(profile="phased", **kw)
+                self.assertEqual(ctx.exception.issue.detail["feature"], "phase_plan")
+
+    def test_a_phased_pass_through_when_both_weights_are_zero_or_there_is_no_file(self):
+        model = FakeModel()
+        for kw in ({"lora_name": "none"}, {"lora_name": "a.safetensors", "w0": 0.0, "w1": 0.0}):
+            with self.subTest(kw=kw):
+                out, profile, _c = node.MossPhotonLoRAProfile().apply(
+                    model, **dict(dict(lora_name="none", strength_model=1.0, role="character", profile="phased"), **kw))
+                self.assertIs(out, model)
+                self.assertEqual((profile["stack"], profile["phase_plan"]), ([], None))
+
+    def test_a_phased_adapter_never_takes_the_text_encoder(self):
+        with self.assertRaises(errors.UnsupportedFeature) as ctx:
+            self.apply(profile="phased", apply_text_encoder=True, strength_clip=0.5, clip=object())
+        self.assertEqual(ctx.exception.issue.param, "apply_text_encoder")
 
     def test_unknown_role_is_a_typed_error(self):
         """n1 (R3): reachable through the API, so never a bare ValueError."""

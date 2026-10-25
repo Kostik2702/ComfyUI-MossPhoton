@@ -51,8 +51,27 @@ class DistillIssuesTest(unittest.TestCase):
             if role != "distill":
                 self.assertEqual(lora.distill_issues(role, SHA_A, "x.safetensors"), [])
 
-    def test_known_verified_file_in_another_role_is_not_an_issue_here(self):
-        self.assertEqual(lora.distill_issues("character", DMD2, "lodestones.safetensors"), [])
+    def test_known_verified_file_in_another_role_warns_and_names_the_expected_role(self):
+        """MP-50: a known distill file under another role is not changed (no silent role change); it is named."""
+        for role in lora.ROLES:
+            if role == "distill":
+                continue
+            with self.subTest(role=role):
+                issues = lora.distill_issues(role, DMD2, "lodestones.safetensors")
+                self.assertEqual([(i.code, i.severity, i.param) for i in issues],
+                                 [("distill_lora_role_mismatch", "warning", "role")])
+                self.assertIn("lodestones.safetensors", issues[0].message)
+                self.assertIn("role '%s'" % role, issues[0].message)
+                self.assertIn("role=distill", issues[0].fix)
+                self.assertEqual(issues[0].detail, {"sha256": DMD2, "role": role, "expected_role": "distill"})
+
+    def test_the_role_mismatch_code_is_registered_as_a_warning_without_a_class(self):
+        self.assertEqual(errors.REASONS["distill_lora_role_mismatch"].severity, "warning")
+        self.assertIsNone(errors.REASONS["distill_lora_role_mismatch"].exc)
+
+    def test_an_incompatible_file_keeps_its_error_and_gets_no_role_advice(self):
+        issues = lora.distill_issues("other", SFT_DMD, "MOSS_Image_SFT_8_steps_dmd_v0.1.safetensors")
+        self.assertEqual([i.code for i in issues], ["incompatible_lora"])
 
     def test_role_distill_exists_in_the_profile_vocabulary(self):
         self.assertIn("distill", lora.ROLES)

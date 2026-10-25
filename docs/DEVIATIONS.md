@@ -20,7 +20,7 @@ MP-1 on 2026-10-25.
 | DV6 | 7.1 all fields compile into the prompt | `forbidden_changes` is stored in `PHOTON_CONSTRAINTS` only and is never compiled into the positive or negative prompt | a negation inside a positive MOSS prompt may backfire; the owner chose to keep the field for diagnostics | **DECIDED by owner 2026-10-25** (OD1) |
 | DV7 | 4.1 LoRAProfile input `profile` | it is the weight-profile mode (`constant` in v1); curated metadata (verified range, dataset, recommended prompt) comes from an optional `<lora_stem>.photon.json` sidecar | SPEC leaves the meaning open; phased weight is MP-16 | accepted by lead (Q2) |
 | DV8 | 4.1 sampler `vae?` | v1 uses it only for a compatibility check (`invalid_vae`); previews use ComfyUI's latent previewer | decoding with the VAE mid-sampling can evict the diffusion model from VRAM | architect |
-| DV9 | 4.1 Advanced: "LoRA weights by sigma, guard parameters, solver mode, CFG profile" | LoRA weight by sigma = MP-16; guard parameters absent (DV5); `solver` and `cfg_profile` exist as single-valued extension widgets (`euler`, `constant`) | SPEC 5/6.4: only calibrated mechanisms; widgets are positional in saved workflows, so they exist from day one | lead (cuts), architect |
+| DV9 | 4.1 Advanced: "LoRA weights by sigma, guard parameters, solver mode, CFG profile" | LoRA weight by sigma = MP-16, now the experimental `phased` profile (B11); guard parameters absent (DV5); `solver` and `cfg_profile` exist as single-valued extension widgets (`euler`, `constant`) | SPEC 5/6.4: only calibrated mechanisms; widgets are positional in saved workflows, so they exist from day one | lead (cuts), architect |
 | DV10 | 4.1 "estimate of calls and time" | the forward count is exact before the run (GET route `/mossphoton/presets/{id}/resolved`) and in the report; the time estimate is `null` | a time estimate needs run history; the cache was cut | **lead LD10**; accepted (Q10) |
 | DV11 | 4.1 EmptyLatent "memory estimate" | the node reports latent bytes, token count and megapixels; no activation-memory estimate | a guessed formula would be an unverified claim (m12) | architect |
 | DV12 | 4.1 Diagnostics "metrics" / 7 identity | v1 computes image statistics as measurements without thresholds; reference photos give `identity.status = not_run` (`missing_guard_dependency`); output STRING `summary` added | no detector/ArcFace dependency in v1 (SPEC 8: optional extras) | architect |
@@ -153,3 +153,24 @@ Caveats:
   `incompatible_lora` error), not the pack; with the harness fixed the count is 3 at every check.
 - Bit parity is shown for one machine, one GPU and one ComfyUI build, with the recorded text encoder file; it is not
   evidence about image quality, identity or Base.
+
+### B11. Phased LoRA weight (experimental, since 0.2.0): clone per level, no native hooks
+
+SPEC 5 asks for a LoRA weight that changes with the sampling progress and for "snapshot/clone" isolation. Shipped in
+0.2.0 (MP-16): the weight is quantised to 6 levels and each run segment is sampled on its own clone of the
+model patched at that level (`core/lora_phase.py`, `core/phase.py`); the clone-per-level design satisfies the SPEC's
+clone requirement. Only `MossPhotonSamplerAdvanced` runs it; label `not_reference` / `lora_phased`, warning
+`phase_lora_experimental`.
+
+ComfyUI's native weight hooks (`comfy/hooks.py`, keyframes by `start_percent`) were tried first and **not used**. They
+express a per-step weight exactly, but a hook applies the LoRA in float32 with stochastic rounding, while the
+dynamic-VRAM loader (the default on NVIDIA, active on the test machine) applies it in bf16 on the fly. On three layers of
+the real SFT checkpoint 1.5 % to 2.4 % of the bf16 weights differed, so a constant weight through hooks is not the stock
+LoRA result, and the pack's `reference_with_lora` claim is a bit-equality claim. Hooks are also not implemented for the
+dynamic model patcher, which falls back to a second, non-dynamic copy of the model in memory. Evidence:
+`research/phase_lora/NOTES.md`.
+
+Known limits: weights between the 6 levels are quantised (error at most `|w1 - w0| / 10`); segment hand-over is exact for
+the Euler solver only (the only solver in v1); the feature is outside every verification and calibration.
+Smoke results (GPU, 2026-10-25, one case, one seed): constant 0.8 through the phased path equals the stock loader bit for
+bit; a full-body run with 1.0 to 0.6 completed with unchanged forward counts (100 calls, 50 skip).

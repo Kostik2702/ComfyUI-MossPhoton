@@ -15,7 +15,7 @@ Version 0.1.0 on ComfyUI 0.42.0 (commit `8f04fd6ec`).
   their own gate, whose quality part (G5) was not run. `experimental` = research. `preview_only` = a draft. A status word is not a measurement of
   quality, and the pack makes no claim of a gain in quality, identity or realism.
 - **Not in v1:** `MossPhotonSeedDrafts`, `MossPhotonPreserveUpscale`, `MossPhotonIdentityDetailer`,
-  `MossPhotonProtectedRefine` (SPEC 4.2); the `guard` socket; phased LoRA weight; an identity score; img2img, inpaint
+  `MossPhotonProtectedRefine` (SPEC 4.2); the `guard` socket; phased LoRA weight as a verified feature (it exists as the experimental `phased` profile since 0.2.0, 3.3.1); an identity score; img2img, inpaint
   and upscaling; a Base workflow; a masked-detailer workflow. A source image or latent is refused by `wardrobe_safe` and
   `scene_safe` (`unsupported_source_input`).
 
@@ -82,7 +82,7 @@ Inputs: `clip` (type `moss_image`), `positive`, `negative`, optional blocks `ide
 ### 3.3 Moss Photon LoRA Profile (`MossPhotonLoRAProfile`, 1 Setup)
 
 One adapter per node. Inputs: `model`, `lora_name` (`none` passes the model through), `strength_model` (constant),
-`role` (`character`, `style`, `wardrobe`, `scene`, `other`, `distill`), `profile` (`constant` only), optional `trigger`
+`role` (`character`, `style`, `wardrobe`, `scene`, `other`, `distill`), `profile` (`constant`, or the experimental `phased`, see 3.3.1), optional `trigger`
 (recorded privately, never injected into a prompt or written to a report), `profile_in`, `clip`, `apply_text_encoder`,
 `strength_clip`, `allow_low_coverage`, `fingerprint`. Outputs: `model`, `identity_profile`, `clip`.
 
@@ -95,6 +95,41 @@ One adapter per node. Inputs: `model`, `lora_name` (`none` passes the model thro
   (`lora_layers_missing`).
 - `apply_text_encoder` is **experimental** and off: only the transformer part is applied by default.
 - Strength: there is no verified value for a character LoRA. The distill LoRA wants 1.0 (its card).
+
+#### 3.3.1 Phased LoRA weight (experimental, since 0.2.0)
+
+`profile = phased` makes the LoRA weight follow the sampling progress instead of staying constant. It is **experimental,
+outside every verification**, and works only with `MossPhotonSamplerAdvanced`; the simple sampler refuses it with
+`unsupported_feature` naming the Advanced node. Presets never enable it.
+
+- Widgets of the LoRA Profile (used only with `profile = phased`): `w0` (weight before the window, default 0.3), `w1`
+  (weight after it, 0.9), `a` and `b` (the window, as sampling progress `r` in 0..1, defaults 0.2 and 0.6, `a < b`).
+  Between `a` and `b` the weight moves from `w0` to `w1` by a smoothstep; `w0 = w1` is exactly that constant weight.
+  `strength_model` is not used (the report records `w1` in its place). Weights are limited to +-10.
+- `r` is the share of the sigma path already walked at the start of a step (cumulative |d sigma| over the total of the
+  run's own sigma array, native or the connected `sigmas`), never a step number.
+- Rules: one phased adapter per chain (a second one is `unsupported_feature`); it is applied **after** all constant
+  adapters of the chain, wherever it sits in the chain; transformer only (`apply_text_encoder` with `phased` is refused).
+- Result label: `not_reference` with the reason `lora_phased` (also on turbo presets), and the warning
+  `phase_lora_experimental`. The report carries `lora.phase` (the plan, the applied weights and their hash, the segments).
+- Mechanism: the weight is quantised to 6 equally spaced levels between `w0` and `w1`; the run is cut into at most 6
+  segments, each sampled on its own clone of the model patched at that level, and the latent is handed from segment to
+  segment unchanged. At most one level clone is alive at a time. `DEVIATIONS.md`, B11 gives the reasons.
+- A phased adapter with `w0 = w1 = 0.8` produced the same latent and image, bit for bit, as the stock LoRA loader at 0.8
+  (one case, GPU smoke, see below).
+
+**Observation, one case and one seed; not a calibration and not a recommendation backed by a sample.** With the
+native shift 5, `r` is very non-linear in the step number: step 6 is `r` = 0.026, step 10 is 0.047, step 20 is 0.117,
+step 30 is 0.229, step 40 is 0.438 of 50. On the parity case C19 (1024x1024, seed 42, a character LoRA at
+constant 0.8) the predicted clean image shows hair and silhouette already set by steps 6 to 10 (`r` about 0.03 to 0.05)
+and the face by step 20 (`r` about 0.12). A weak-early profile (0.3 rising to 0.9, a = 0.2, b = 0.6) lost the
+character's identity entirely in that case. A strong-early profile (1.0 falling to 0.6, window a = 0.25, b = 0.5, a different case: a full-body prompt at 832x1216,
+one seed) kept the character's face and body build like constant 0.8 and changed late detail only. That is a visual
+inspection by the maintainers of three images, one seed (`fullbody_A`, `fullbody_B`, `fullbody_C` in the development
+repository); the run files make no likeness claim; not scored, not calibrated. If you want the face and the figure
+of a character LoRA, a starting point to try is to keep the weight high for `r` below about 0.25 (roughly the first 30 of
+50 steps) and ease it after that. Check the result yourself; nothing here says the profile is better than a constant
+weight.
 
 ### 3.4 Moss Photon Schedule (`MossPhotonSchedule`, 2 Sampling)
 
@@ -143,7 +178,7 @@ This is the only place where an SLG override may stand on a turbo preset (`turbo
 **experimental**: the run warns `turbo_slg_experimental` and is labelled `not_reference` (reason `slg_differs`); the DMD2
 recipe has SLG off, and at CFG 1.0 a forced SLG has no effect (info `slg_ineffective_cfg1`). The simple sampler refuses it.
 
-Reserved and absent in v1: LoRA weight by sigma, guard parameters, restart, ancestral noise, second order.
+Reserved and absent: guard parameters, restart, ancestral noise, second order. A LoRA weight that changes over the run exists as the experimental `phased` profile since 0.2.0 (3.3.1); it runs only here.
 
 ### 3.7 Moss Photon Diagnostics (`MossPhotonDiagnostics`, 3 Diagnostics)
 
@@ -245,6 +280,6 @@ prompt is not used (info `negative_unused_cfg1`).
 
 ## 9. Out of scope in v1 (summary)
 
-Base verification (MP-19); calibration stages B to D; phased LoRA weight (MP-16); the nodes `MossPhotonSeedDrafts`,
+Base verification (MP-19); calibration stages B to D; phased LoRA weight as a verified feature (it exists as the experimental `phased` profile since 0.2.0, 3.3.1); the nodes `MossPhotonSeedDrafts`,
 `MossPhotonPreserveUpscale`, `MossPhotonIdentityDetailer`, `MossPhotonProtectedRefine`; identity and clothing scoring;
 quantised-checkpoint matrix; the `guard` socket. See `DEVIATIONS.md` for the reasons.

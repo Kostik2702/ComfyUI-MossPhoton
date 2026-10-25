@@ -41,7 +41,13 @@
           },
           "weight_profile": {
             "type": "object", "required": ["kind"],
-            "properties": {"kind": {"enum": ["constant", "phased"]}, "w": {"type": "number"}}
+            "properties": {
+              "kind": {"enum": ["constant", "phased"]}, "w": {"type": "number"},
+              "w0": {"type": "number"}, "w1": {"type": "number"},
+              "a": {"type": "number", "minimum": 0, "maximum": 1}, "b": {"type": "number", "minimum": 0, "maximum": 1}
+            },
+            "if": {"properties": {"kind": {"const": "phased"}}},
+            "then": {"required": ["w0", "w1", "a", "b"]}
           },
           "key_format": {"enum": ["peft_split_qkv", "peft_fused_qkv", "kohya", "lokr", "unknown"]},
           "coverage": {
@@ -100,7 +106,26 @@
         {"type": "object", "additionalProperties": false, "required": ["family", "sha256"], "properties": {"family": {"enum": ["moss-image-sft", "moss-image-base", "unknown-moss"]}, "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}}}
       ]
     },
-    "phase_plan": {"type": "null"},
+    "phase_plan": {"oneOf": [
+      {"type": "null"},
+      {
+        "type": "object", "additionalProperties": false,
+        "required": ["version", "kind", "progress", "mechanism", "apply_order", "levels", "stack_index", "w0", "w1", "a", "b"],
+        "properties": {
+          "version": {"const": 1},
+          "kind": {"const": "smoothstep_by_sigma_progress"},
+          "progress": {"const": "cumulative_abs_dsigma"},
+          "mechanism": {"const": "clone_per_level"},
+          "apply_order": {"const": "after_constant_adapters"},
+          "levels": {"type": "integer", "minimum": 2, "maximum": 16},
+          "stack_index": {"type": "integer", "minimum": 0},
+          "w0": {"type": "number", "minimum": -10, "maximum": 10},
+          "w1": {"type": "number", "minimum": -10, "maximum": 10},
+          "a": {"type": "number", "minimum": 0, "maximum": 1},
+          "b": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    ]},
     "digest": {"$ref": "#/$defs/sha256"},
     "attachment": {
       "type": "object", "additionalProperties": false,

@@ -5,7 +5,7 @@ Leaf module: no imports at all (design 7.3). ``REASON_CODES`` lives in ``errors.
 
 PACK_NAME = "ComfyUI-MossPhoton"
 # A unit test asserts equality with pyproject.toml.
-PACK_VERSION = "0.1.0"
+PACK_VERSION = "0.2.0"
 
 REPORT_SCHEMA = 1
 PRESET_SCHEMA = 1

@@ -185,6 +185,15 @@
    "display_name": "Moss Photon LoRA Profile",
    "input": {
     "optional": {
+     "a": [
+      "FLOAT",
+      {
+       "default": 0.2,
+       "max": 1.0,
+       "min": 0.0,
+       "step": 0.01
+      }
+     ],
      "allow_low_coverage": [
       "BOOLEAN",
       {
@@ -195,6 +204,15 @@
       "BOOLEAN",
       {
        "default": false
+      }
+     ],
+     "b": [
+      "FLOAT",
+      {
+       "default": 0.6,
+       "max": 1.0,
+       "min": 0.0,
+       "step": 0.01
       }
      ],
      "clip": [
@@ -229,6 +247,24 @@
       {
        "default": ""
       }
+     ],
+     "w0": [
+      "FLOAT",
+      {
+       "default": 0.3,
+       "max": 10.0,
+       "min": -10.0,
+       "step": 0.01
+      }
+     ],
+     "w1": [
+      "FLOAT",
+      {
+       "default": 0.9,
+       "max": 10.0,
+       "min": -10.0,
+       "step": 0.01
+      }
      ]
     },
     "required": {
@@ -249,7 +285,8 @@
      ],
      "profile": [
       [
-       "constant"
+       "constant",
+       "phased"
       ],
       {
        "default": "constant"
@@ -287,7 +324,11 @@
      "apply_text_encoder",
      "strength_clip",
      "allow_low_coverage",
-     "fingerprint"
+     "fingerprint",
+     "w0",
+     "w1",
+     "a",
+     "b"
     ],
     "required": [
      "model",

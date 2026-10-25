@@ -149,6 +149,38 @@ class CheapChecksBeforeTheHashTest(unittest.TestCase):
         self.assertEqual(seen[-1], "moss-image-sft")
 
 
+class KnownDistillWrongRoleTest(unittest.TestCase):
+    """MP-50: the owner's graph loaded lodestones-8-steps-dmd2-lora with role=other; the run must say which file."""
+
+    DMD2 = "7683fe1fb51f73f5d690f24dd6b7f46f31ab9a9873729a854ac5c9a420ffe6f2"
+    NAME = "lodestones-8-steps-dmd2-lora.safetensors"
+
+    def test_the_run_stops_with_an_error_that_names_the_file_and_the_roles(self):
+        profile, facts = distill_profile("other")
+        profile["stack"][0]["lora"].update(basename=self.NAME, sha256=self.DMD2)
+        s = SpyScenario(self, facts=facts)
+        exc = s.expect("missing_lora", preset_id="turbo_8step", cfg=1.0, identity_profile=profile)
+        text = str(exc)
+        for needle in (self.NAME, "'other'", "role=distill", "known distill LoRA"):
+            self.assertIn(needle, text)
+        self.assertEqual(s.identify.call_count, 0)
+
+    def test_no_role_is_changed_the_profile_is_untouched(self):
+        profile, facts = distill_profile("other")
+        profile["stack"][0]["lora"].update(basename=self.NAME, sha256=self.DMD2)
+        before = copy.deepcopy(profile)
+        SpyScenario(self, facts=facts).expect("missing_lora", preset_id="turbo_8step", cfg=1.0, identity_profile=profile)
+        self.assertEqual(profile, before)
+
+    def test_an_unknown_file_gets_the_pairs_listing(self):
+        profile, facts = distill_profile("other")
+        profile["stack"][0]["lora"].update(basename="mine.safetensors", sha256="a" * 64)
+        exc = SpyScenario(self, facts=facts).expect("missing_lora", preset_id="turbo_8step", cfg=1.0,
+                                                   identity_profile=profile)
+        self.assertIn("mine.safetensors:other", str(exc))
+        self.assertNotIn("known distill", str(exc))
+
+
 class SlgOverrideOnTurboTest(unittest.TestCase):
     """MP-30 M2: the SLG override on a turbo preset is allowed for the Advanced node only."""
 

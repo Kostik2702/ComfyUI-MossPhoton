@@ -157,6 +157,30 @@
     "lora": {
       "type": "object", "additionalProperties": false, "required": ["stack", "foreign_patches", "te_applied", "profile_digest"],
       "properties": {
+        "phase": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mechanism", "kind", "progress", "apply_order", "stack_index", "w0", "w1", "a", "b", "levels", "steps", "planned_sha256", "weights_sha256", "segments", "clones_built"],
+          "properties": {
+            "mechanism": {"const": "clone_per_level"},
+            "kind": {"const": "smoothstep_by_sigma_progress"},
+            "progress": {"const": "cumulative_abs_dsigma"},
+            "apply_order": {"const": "after_constant_adapters"},
+            "stack_index": {"type": "integer", "minimum": 0},
+            "w0": {"type": "number"}, "w1": {"type": "number"}, "a": {"type": "number"}, "b": {"type": "number"},
+            "levels": {"type": "integer", "minimum": 2},
+            "steps": {"type": "integer", "minimum": 1},
+            "planned_sha256": {"$ref": "#/$defs/sha256"},
+            "weights_sha256": {"$ref": "#/$defs/sha256"},
+            "segments": {
+              "type": "array", "minItems": 1,
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["first_step", "last_step", "weight"],
+                "properties": {"first_step": {"type": "integer", "minimum": 0}, "last_step": {"type": "integer", "minimum": 0}, "weight": {"type": "number"}}
+              }
+            },
+            "clones_built": {"type": "integer", "minimum": 0}
+          }
+        },
         "stack": {
           "type": "array",
           "items": {

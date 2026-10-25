@@ -70,6 +70,16 @@ class NotReferenceReasonsTest(unittest.TestCase):
         self.assertEqual(reasons(live_shift=3.0), ["shift_differs"])
         self.assertEqual(reasons(noise_policy="seed_plus_i"), ["noise_seed_plus_i"])
 
+    def test_a_phased_lora_weight_is_not_reference_with_its_own_reason(self):
+        self.assertEqual(reasons(has_lora=True, phased=True), ["lora_phased"])
+        self.assertEqual(parity(has_lora=True, phased=True), "not_reference")
+        self.assertEqual(parity(has_lora=True), "reference_with_lora")  # control: the same run without the flag
+        self.assertEqual(reasons(customized=True, phased=True), ["lora_phased", "customized"])
+
+    def test_a_phased_lora_weight_demotes_a_turbo_run_too(self):
+        block = label("turbo_8step", steps_used=8, cfg=1.0, has_lora=True, slg_applied=False, phased=True)
+        self.assertEqual((block["parity_class"], block["not_reference_reasons"]), ("not_reference", ["lora_phased"]))
+
     def test_draft_fast(self):
         self.assertEqual(parity("draft_fast", steps_used=25), "not_reference")
         self.assertEqual(reasons("draft_fast", steps_used=25), ["steps_differ", "draft_preset"])

@@ -236,7 +236,7 @@ class PreflightErrorsTest(unittest.TestCase):
                            patches_uuid=profile["attachment"]["patches_uuid"],
                            patch_entries=profile["attachment"]["patch_entries_total"])
         e = Scenario(self, facts=facts).expect("unsupported_feature", identity_profile=profile)
-        self.assertIn("MP-16", str(e))
+        self.assertIn("MossPhotonSamplerAdvanced", str(e))
 
     def test_layout_outside_the_canvas(self):
         c = constraints_fixture()

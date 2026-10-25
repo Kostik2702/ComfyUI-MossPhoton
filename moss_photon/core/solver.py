@@ -14,7 +14,8 @@ import logging
 import math
 import time
 
-from . import adapter, canon, consts, errors, fingerprint, guard, guidance, phase, presets, report, rng, sigma
+from . import (adapter, canon, consts, errors, fingerprint, guard, guidance, lora_phase, phase, presets, report, rng,
+               sigma)
 
 __all__ = [
     "SampleRequest", "SampleResult", "RunPlan", "ProfileCheck", "ForwardStats", "StepTelemetry", "TURBO_PARITY_CLASS",
@@ -39,7 +40,8 @@ class SampleRequest:
     (``steps slg_mode slg_layers slg_start slg_end``) that differ from the preset. ``max_forwards`` 0 = unlimited.
     ``reference_dtypes`` ``None`` = ``consts.REFERENCE_WEIGHT_DTYPES`` (CPU tests pass ``("torch.float32",)``).
     ``allow_slg_override`` lets an SLG override stand on a turbo preset (experimental, label ``not_reference``); only
-    MossPhotonSamplerAdvanced sets it (MP-30 M2)."""
+    MossPhotonSamplerAdvanced sets it (MP-30 M2). ``allow_phased_lora`` lets an identity profile with a phased LoRA
+    weight run (experimental, label ``not_reference`` / ``lora_phased``); only MossPhotonSamplerAdvanced sets it (MP-16)."""
 
     node_id: str
     model: object
@@ -62,6 +64,7 @@ class SampleRequest:
     reference_dtypes: object = None
     report_step_times: bool = False
     allow_slg_override: bool = False
+    allow_phased_lora: bool = False
 
 
 @dataclasses.dataclass
@@ -302,7 +305,7 @@ def _outside_verified(preset, steps_used, cfg):
 
 def classify_label(*, preset, effective, customized, reference_sampling, steps_used, cfg, live_shift,
                    sigmas_bit_equal_native, noise_policy, modifiers, foreign_patches, family_verified, has_lora,
-                   slg_applied, calibrated, family_in_preset=True):
+                   slg_applied, calibrated, family_in_preset=True, phased=False):
     """The report block ``label`` (ladder of A21); pure.
 
     ``not_reference`` > ``reference_modified`` > ``reference_with_foreign_patches`` > ``reference_unverified`` >
@@ -316,7 +319,8 @@ def classify_label(*, preset, effective, customized, reference_sampling, steps_u
     ``effective`` is ``ResolvedPreset.effective``, ``reference_sampling`` the ``sampling`` block of the ``reference``
     preset, ``steps_used`` the number of sampler steps actually run. ``family_in_preset`` is false when the identified
     checkpoint family is not in the preset's ``model_families`` (M7): ``reference_unverified``, or for turbo
-    ``not_reference`` with the reason ``model_family_unverified``.
+    ``not_reference`` with the reason ``model_family_unverified``. ``phased`` (a LoRA weight that moves with the
+    sampling progress, MP-16) is always ``not_reference`` with the reason ``lora_phased``, turbo presets included.
     """
     sampling = effective["sampling"]
     reasons = []
@@ -347,6 +351,8 @@ def classify_label(*, preset, effective, customized, reference_sampling, steps_u
         reasons.append("shift_differs")
     if noise_policy != "native":
         reasons.append("noise_seed_plus_i")
+    if phased:
+        reasons.append("lora_phased")
     if not turbo:
         if preset["status"] == "preview_only":
             reasons.append("draft_preset")
@@ -563,7 +569,8 @@ def execute(req):
     profile vs MODEL; phase plan; required guards; SLG; layout extent; sigmas; budget (all cheap, before the checkpoint
     is hashed); checkpoint identity; family gate; label.
     Execution: one clone with the SLG hook and the counter, noise, plain ``CFGGuider`` + euler inside
-    ``torch.inference_mode()``, ``to_intermediate``, finite check, report. Interrupts and errors propagate; the
+    ``torch.inference_mode()``, ``to_intermediate``, finite check, report. A phased LoRA weight (MP-16, Advanced only)
+    runs the same guider once per weight segment, each on its own direct clone (``lora_phase.run_segments``). Interrupts and errors propagate; the
     references to the clone, the guider and the noise are dropped in ``finally``.
     """
     node = req.node_id
@@ -627,6 +634,8 @@ def execute(req):
     preset = first.preset
     check(presets.evaluate_requirements(first, {
         "lora_roles": [s.get("role") for s in (profile or {}).get("stack", [])],
+        "lora_stack": [{"basename": (s.get("lora") or {}).get("basename"), "role": s.get("role"),
+                        "sha256": (s.get("lora") or {}).get("sha256")} for s in (profile or {}).get("stack", [])],
         "blocks_present": (constraints or {}).get("blocks_present") or {},
         "latent_is_empty": lfacts.is_empty, "has_noise_mask": lfacts.has_noise_mask, "reference_photos": False,
     }, node))
@@ -636,7 +645,7 @@ def execute(req):
     requires_lora = any(c["kind"] == "requires_lora_role" for c in preset["constraints"])
     pcheck = check_profile(profile, facts, requires_lora, node=node)
     check(list(pcheck.issues))
-    phase.reject_phase_plan(profile, node=node)
+    phase_plan = phase.check_phase_plan(profile, node=node, allowed=req.allow_phased_lora)
     for i, entry in enumerate((profile or {}).get("stack", [])):
         for w in entry.get("warnings") or []:
             item = w.to_dict() if hasattr(w, "to_dict") else dict(w)
@@ -686,6 +695,21 @@ def execute(req):
             note([errors.make_issue("img2img_not_verified", node, "latent",
                                     "a non-empty latent with first sigma %g runs image-to-image, which is outside "
                                     "the verified scope" % values[0], "use sigma 1.0 and an empty latent")])
+    phased_run = None
+    if phase_plan is not None:  # MP-16, EXPERIMENTAL: the weights are known from the sigmas alone, before any forward
+        adapter_on_model = lora_phase.adapter_of(req.model)
+        check(lora_phase.check_adapter(adapter_on_model, profile["stack"][phase_plan.stack_index], phase_plan,
+                                       node=node))
+        schedule = phase.build_schedule(values, phase_plan)
+        phased_run = (adapter_on_model, schedule)
+        note([errors.make_issue(
+            "phase_lora_experimental", node, "identity_profile",
+            "stack[%d] runs with a LoRA weight that moves %g -> %g over the sampling progress %g..%g (%d steps, %d "
+            "weight segments, one model clone each)" % (phase_plan.stack_index, phase_plan.w0, phase_plan.w1,
+                                                        phase_plan.a, phase_plan.b, len(schedule.applied),
+                                                        len(schedule.segments)),
+            "experimental and outside every verification; use a constant weight for a reference result",
+            detail={"stack_index": phase_plan.stack_index, "levels": phase_plan.levels})])
     plan = plan_run(first, lfacts, values, max_forwards=req.max_forwards, node=node)
     steps_used = plan.steps
 
@@ -745,7 +769,7 @@ def execute(req):
         steps_used=steps_used, cfg=cfg, live_shift=live_shift, sigmas_bit_equal_native=bit_equal,
         noise_policy=req.noise_policy, modifiers=modifiers, foreign_patches=pcheck.foreign,
         family_verified=identity["verified_matrix"] is True, has_lora=pcheck.has_lora, slg_applied=slg_applied,
-        calibrated=calibrated, family_in_preset=not family_gate)
+        calibrated=calibrated, family_in_preset=not family_gate, phased=phase_plan is not None)
     rb.section("label", **label)
 
     ms = req.model.get_model_object("model_sampling")
@@ -776,6 +800,8 @@ def execute(req):
     rb.section("lora", stack=_lora_stack(profile), foreign_patches=foreign_block,
                te_applied=bool(((profile or {}).get("summary") or {}).get("te_applied", False)),
                profile_digest=(profile or {}).get("digest"))
+    if phased_run is not None:
+        rb.section("lora", phase=phase.describe_schedule(phased_run[1], clones_built=0))
     rb.section("forwards", expected_branch_forwards=plan.expected_branch_forwards,
                expected_sample_forwards=plan.expected_sample_forwards, extra=plan.extra)
     rb.section("preview", enabled=bool(req.preview))
@@ -784,25 +810,42 @@ def execute(req):
     # 9. execution: ONE clone (SLG hook + counter), plain CFGGuider + euler
     stats, tele = ForwardStats(), StepTelemetry()
     clone = guider = noise = callback = sigma_tensor = sampler = None
+    clones_built = 0
     try:
-        clone = guidance.apply_slg(req.model, layers=smp["slg_layers"], start=smp["slg_start"],
-                                   end=smp["slg_end"]) if slg_applied else req.model
-        if clone is req.model:
-            clone = req.model.clone()
-        install_counter(clone, stats)
+        if phased_run is None:
+            clone = guidance.apply_slg(req.model, layers=smp["slg_layers"], start=smp["slg_start"],
+                                       end=smp["slg_end"]) if slg_applied else req.model
+            if clone is req.model:
+                clone = req.model.clone()
+            install_counter(clone, stats)
         import torch
         noise = rng.make_noise(fixed, req.seed, req.noise_policy, req.latent.get("batch_index"), node=node)
         rb.section("inputs", noise_sha256=rng.tensor_sha256(noise))
-        guider = build_guider(clone, req.positive, req.negative, cfg)
         sampler = get_sampler("euler")
-        callback = make_callback(clone, steps_used, preview=req.preview, telemetry=tele, finite_check=True, node=node)
+        # a phased run builds its clones segment by segment (lora_phase); the preview only needs the latent format
+        callback = make_callback(clone if phased_run is None else req.model, steps_used, preview=req.preview,
+                                 telemetry=tele, finite_check=True, node=node)
         sigma_tensor = torch.tensor(values, dtype=torch.float32)
         import comfy.utils
         _memory_begin(env["device"])
         tele.start()
         with torch.inference_mode():
-            samples = guider.sample(noise, fixed.clone(), sampler, sigma_tensor, callback=callback,
-                                    disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED, seed=req.seed)
+            if phased_run is None:
+                guider = build_guider(clone, req.positive, req.negative, cfg)
+                samples = guider.sample(noise, fixed.clone(), sampler, sigma_tensor, callback=callback,
+                                        disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED, seed=req.seed)
+            else:
+                def run_clone(level):
+                    run = guidance.apply_slg(level, layers=smp["slg_layers"], start=smp["slg_start"],
+                                             end=smp["slg_end"]) if slg_applied else level
+                    install_counter(run, stats)
+                    return run
+
+                samples, clones_built = lora_phase.run_segments(
+                    phased_run[1], req.model, phased_run[0], make_clone=run_clone,
+                    make_guider=lambda run: build_guider(run, req.positive, req.negative, cfg), sampler=sampler,
+                    noise=noise, latent_image=fixed, sigmas=sigma_tensor, callback=callback,
+                    disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED, seed=req.seed, poll=_poll_interrupt)
         rb.mark_phase("sampling_done")
         samples = adapter.to_intermediate(samples)
         guard.check_finite(samples, node=node, where="final latent")
@@ -827,6 +870,8 @@ def execute(req):
     if req.report_step_times:
         timing["step_s"] = [round(s, 6) for s in tele.steps]
     rb.section("timing", **timing)
+    if phased_run is not None:
+        rb.section("lora", phase=phase.describe_schedule(phased_run[1], clones_built=clones_built))
     rb.section("forwards", model_calls=stats.calls, sample_forwards=stats.elements, slg_skip_calls=stats.skip_calls,
                match=match)
     rb.section("memory", **memory)

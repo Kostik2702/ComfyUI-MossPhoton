@@ -467,6 +467,38 @@
       "name": "fingerprint"
      },
      "link": null
+    },
+    {
+     "name": "w0",
+     "type": "FLOAT",
+     "widget": {
+      "name": "w0"
+     },
+     "link": null
+    },
+    {
+     "name": "w1",
+     "type": "FLOAT",
+     "widget": {
+      "name": "w1"
+     },
+     "link": null
+    },
+    {
+     "name": "a",
+     "type": "FLOAT",
+     "widget": {
+      "name": "a"
+     },
+     "link": null
+    },
+    {
+     "name": "b",
+     "type": "FLOAT",
+     "widget": {
+      "name": "b"
+     },
+     "link": null
     }
    ],
    "outputs": [
@@ -505,7 +537,11 @@
     false,
     0.0,
     false,
-    "cached_or_compute"
+    "cached_or_compute",
+    0.3,
+    0.9,
+    0.2,
+    0.6
    ]
   },
   {
@@ -609,6 +645,38 @@
       "name": "fingerprint"
      },
      "link": null
+    },
+    {
+     "name": "w0",
+     "type": "FLOAT",
+     "widget": {
+      "name": "w0"
+     },
+     "link": null
+    },
+    {
+     "name": "w1",
+     "type": "FLOAT",
+     "widget": {
+      "name": "w1"
+     },
+     "link": null
+    },
+    {
+     "name": "a",
+     "type": "FLOAT",
+     "widget": {
+      "name": "a"
+     },
+     "link": null
+    },
+    {
+     "name": "b",
+     "type": "FLOAT",
+     "widget": {
+      "name": "b"
+     },
+     "link": null
     }
    ],
    "outputs": [
@@ -647,7 +715,11 @@
     false,
     0.0,
     false,
-    "cached_or_compute"
+    "cached_or_compute",
+    0.3,
+    0.9,
+    0.2,
+    0.6
    ]
   },
   {

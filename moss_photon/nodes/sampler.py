@@ -183,6 +183,7 @@ class MossPhotonSamplerAdvanced(MossPhotonSampler):
             preview, preset_pin, sigmas=sigmas, noise_policy=noise_policy, fingerprint_mode=fingerprint,
             max_forwards=max_forwards, report_step_times=report_step_times,
             allow_slg_override=True,  # MP-30 M2: the one place an SLG override may stand on a turbo preset
+            allow_phased_lora=True,   # MP-16: the one place a phased (experimental) LoRA weight may run
             overrides=build_overrides(steps, slg_mode, slg_layers, slg_start, slg_end, has_sigmas=sigmas is not None))
 
 

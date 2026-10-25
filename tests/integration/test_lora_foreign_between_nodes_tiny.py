@@ -113,9 +113,12 @@ class ForeignPatchesTest(unittest.TestCase):
         m_a, p_a, _ = lora_synth.run_node(self.patcher, "A.safetensors")
         with self.assertRaises(self.errors.IncompatibleLora):
             lora_synth.run_node(m_a, "B.safetensors", profile_in={"kind": "something"})
-        phased = dict(p_a, phase_plan={"phases": []})
+        half_phased = dict(p_a, phase_plan={"phases": []})  # MP-16: a phase plan must be a valid one for a phased entry
+        with self.assertRaises(self.errors.IncompatibleLora):
+            lora_synth.run_node(m_a, "B.safetensors", profile_in=half_phased)
+        newer = dict(p_a, schema_version=2)
         with self.assertRaises(self.errors.UnsupportedFeature):
-            lora_synth.run_node(m_a, "B.safetensors", profile_in=phased)
+            lora_synth.run_node(m_a, "B.safetensors", profile_in=newer)
 
     def test_pass_through_keeps_the_chain_intact(self):
         m_a, p_a, _ = lora_synth.run_node(self.patcher, "A.safetensors")

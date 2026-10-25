@@ -18,7 +18,7 @@ import os
 import re
 import threading
 
-from . import canon, consts, errors, fingerprint
+from . import canon, consts, errors, fingerprint, phase
 
 __all__ = [
     "NODE", "COVERAGE_OK", "COVERAGE_MIN", "WEIGHT_SUFFIXES", "SCALE_SUFFIXES", "ROLES", "DEFAULT_ROLE",
@@ -48,7 +48,7 @@ _WEIGHT_SUFFIX_SET = frozenset(WEIGHT_SUFFIXES)
 
 ROLES = ("character", "style", "wardrobe", "scene", "other", "distill")
 DEFAULT_ROLE = "character"
-WEIGHT_PROFILE_KINDS = ("constant",)  # MP-16 adds "phased"; the node refuses anything else
+WEIGHT_PROFILE_KINDS = ("constant", "phased")  # "phased" (MP-16) is experimental and runs in the Advanced sampler only
 KEY_FORMATS = ("peft_split_qkv", "peft_fused_qkv", "kohya", "lokr", "unknown")
 
 # Prefixes of text-encoder modules in LoRA files: the generic ComfyUI form and the diffusers / kohya forms.
@@ -387,8 +387,10 @@ def distill_issues(role, sha256, basename, *, node=NODE):
 
     A known ``incompatible`` hash is an ``incompatible_lora`` error in ANY role (the SFT data-space DMD file needs
     its own sampler). A ``distill``-role file whose hash is unknown (or not computed) gets the warning
-    ``unverified_distill_lora``. A known ``verified_recipe`` file has no issue here; the Base-trained note
-    (``lora_base_mismatch`` as info) is produced by the node from ``base_match``.
+    ``unverified_distill_lora``. A known ``verified_recipe`` file loaded with a role other than ``distill`` gets the
+    warning ``distill_lora_role_mismatch`` naming the file and the expected role (the role is never changed for the
+    user, MP-50). A known file in the ``distill`` role has no issue here; the Base-trained note (``lora_base_mismatch``
+    as info) is produced by the node from ``base_match``.
     """
     row = distill_entry(sha256)
     if row is not None and row["status"] == "incompatible":
@@ -404,6 +406,13 @@ def distill_issues(role, sha256, basename, *, node=NODE):
             "%s is declared as a distill LoRA but %s; the 8-step recipe is not verified for it" % (basename, why),
             "use lodestones-8-steps-dmd2-lora (verified recipe) or accept an unverified result",
             detail={"sha256": sha256})]
+    if row is not None and role != row["role"]:
+        return [errors.make_issue(
+            "distill_lora_role_mismatch", node, "role",
+            "%s is a known distill LoRA (%s) but is loaded with role '%s'" % (basename, row["name"], role),
+            "set role=%s on this MossPhotonLoRAProfile; the turbo presets look for a distill LoRA by role"
+            % row["role"],
+            detail={"sha256": sha256, "role": role, "expected_role": row["role"]})]
     return []
 
 
@@ -459,13 +468,18 @@ def check_stack(entries, *, node=NODE):
                               detail={"index": idx, "first": distills[0]}))
             distills.append(idx)
         vs = (entry.get("sidecar") or {}).get("verified_strength")
-        strength = entry["strength_model"]
-        if vs and not (vs["min"] - _STRENGTH_EPS <= strength <= vs["max"] + _STRENGTH_EPS):
-            out.append(mk("lora_strength_outside_verified_range", node, "strength_model",
-                          "strength %g is outside the verified range [%g, %g] for %s"
-                          % (strength, vs["min"], vs["max"], name),
-                          "set strength_model to %g (recommended) or accept an unverified result" % vs["recommended"],
-                          detail={"index": idx, "strength_model": strength, "verified": [vs["min"], vs["max"]]}))
+        wp = entry.get("weight_profile") or {}
+        # a phased entry runs with every weight between w0 and w1: the first one outside the range is reported
+        strengths = [wp["w0"], wp["w1"]] if wp.get("kind") == "phased" else [entry["strength_model"]]
+        for strength in strengths:
+            if vs and not (vs["min"] - _STRENGTH_EPS <= strength <= vs["max"] + _STRENGTH_EPS):
+                out.append(mk("lora_strength_outside_verified_range", node, "strength_model",
+                              "strength %g is outside the verified range [%g, %g] for %s"
+                              % (strength, vs["min"], vs["max"], name),
+                              "set strength_model to %g (recommended) or accept an unverified result"
+                              % vs["recommended"],
+                              detail={"index": idx, "strength_model": strength, "verified": [vs["min"], vs["max"]]}))
+                break
     return out
 
 
@@ -476,11 +490,19 @@ def issues_to_dicts(issues):
 
 def stack_journal(stack):
     """One log line with the apply order of the stack (bit-relevant, docs/03-turbo.md 4.1). No paths, no triggers."""
-    parts = ["%d %s %s (%g)" % (e["index"], e["role"], e["lora"]["basename"], e["strength_model"]) for e in stack]
+    def weight(e):
+        wp = e.get("weight_profile") or {}
+        if wp.get("kind") == "phased":
+            return "phased %g->%g over %g..%g" % (wp["w0"], wp["w1"], wp["a"], wp["b"])
+        return "%g" % e["strength_model"]
+
+    parts = ["%d %s %s (%s)" % (e["index"], e["role"], e["lora"]["basename"], weight(e)) for e in stack]
     line = "LoRA stack, apply order is bit-relevant: " + " -> ".join(parts)
     roles = [e["role"] for e in stack]
     if "distill" in roles and "character" in roles and roles.index("character") < roles.index("distill"):
         line += " [character before distill: not the canonical turbo order, recorded as is]"
+    if any((e.get("weight_profile") or {}).get("kind") == "phased" for e in stack):
+        line += " [the phased adapter is applied after the constant ones]"
     return line
 
 
@@ -534,8 +556,12 @@ def attachment_entry_of(stack_entry):
 
 
 def build_stack_entry(*, index, role, lora, strength_model, strength_clip, mapping, verdict, trained_on, base_match,
-                      sidecar, trigger_hints, warnings):
-    """One ``stack[]`` item (design 2.4). ``lora``: ``{basename, size, sha256, metadata}``; ``warnings``: ``Issue`` list."""
+                      sidecar, trigger_hints, warnings, weight_profile=None):
+    """One ``stack[]`` item (design 2.4). ``lora``: ``{basename, size, sha256, metadata}``; ``warnings``: ``Issue`` list.
+
+    ``weight_profile`` ``None`` = constant at ``strength_model``. A phased entry passes ``phase.weight_profile_of(plan)``
+    and ``strength_model`` = ``plan.w1`` (the weight the run ends with); its ``patch_entries`` still describes the FILE.
+    """
     hints = [h for h in trigger_hints if h]
     return {
         "index": index,
@@ -546,7 +572,7 @@ def build_stack_entry(*, index, role, lora, strength_model, strength_clip, mappi
         "keys_patched": mapping.keys_patched,
         "patch_entries": mapping.model_entries,
         "applied_to": {"transformer": mapping.model_entries > 0, "text_encoder": mapping.te_entries > 0},
-        "weight_profile": {"kind": "constant", "w": float(strength_model)},
+        "weight_profile": weight_profile if weight_profile is not None else {"kind": "constant", "w": float(strength_model)},
         "key_format": mapping.key_format,
         "coverage": coverage_block(mapping, verdict),
         "trained_on": trained_on,
@@ -564,8 +590,10 @@ def profile_digest(profile):
     return canon.sha256_hex(canon.canonical_json(stack))
 
 
-def build_identity_profile(stack, *, attachment, model_identity):
-    """The PHOTON_IDENTITY_PROFILE dict (design 2.4) for ``stack`` (entries in apply order) and its ``attachment``."""
+def build_identity_profile(stack, *, attachment, model_identity, phase_plan=None):
+    """The PHOTON_IDENTITY_PROFILE dict (design 2.4) for ``stack`` (entries in apply order) and its ``attachment``.
+
+    ``phase_plan`` is ``None`` (every adapter constant) or ``phase.plan_to_dict(plan)`` of the one phased adapter."""
     roles = [e["role"] for e in stack]
     profile = {
         "schema_version": consts.IDENTITY_PROFILE_SCHEMA,
@@ -582,7 +610,7 @@ def build_identity_profile(stack, *, attachment, model_identity):
         "attachment": attachment,
         "private_paths": ["stack[*].trigger_hints"],
         "model_identity": model_identity,
-        "phase_plan": None,
+        "phase_plan": copy.deepcopy(phase_plan),
         "digest": "0" * 64,
     }
     profile["digest"] = profile_digest(profile)
@@ -597,6 +625,24 @@ def empty_identity_profile(model):
 
 
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _phase_plan_problems(plan, stack):
+    """Problems of ``phase_plan`` against the stack: ``None`` needs no phased entry; an object must be a valid plan that
+    equals the ``weight_profile`` of exactly one stack entry (MP-16)."""
+    phased = [i for i, e in enumerate(stack) if isinstance(e, dict)
+              and isinstance(e.get("weight_profile"), dict) and e["weight_profile"].get("kind") == "phased"]
+    if plan is None:
+        return ["stack[%d] is phased but phase_plan is null" % phased[0]] if phased else []
+    try:
+        parsed = phase.plan_from_dict(plan, node=NODE)
+    except errors.MossPhotonError as exc:
+        return ["phase_plan is invalid: %s" % exc.issue.message]
+    if phased != [parsed.stack_index]:
+        return ["phase_plan.stack_index is %d, the phased entries are %s" % (parsed.stack_index, phased)]
+    if stack[parsed.stack_index]["weight_profile"] != phase.weight_profile_of(parsed):
+        return ["stack[%d].weight_profile differs from phase_plan" % parsed.stack_index]
+    return []
 
 
 def validate_identity_profile(p):
@@ -623,8 +669,7 @@ def validate_identity_profile(p):
         return ["stack must be a list, attachment and summary objects"]
     if p["private_paths"] != ["stack[*].trigger_hints"]:
         problems.append("private_paths must be ['stack[*].trigger_hints']")
-    if p["phase_plan"] is not None:
-        problems.append("phase_plan must be null in v1")
+    problems.extend(_phase_plan_problems(p["phase_plan"], stack))
     if not isinstance(p["digest"], str) or not _SHA_RE.match(p["digest"]):
         problems.append("digest must be a 64-hex sha256")
     elif p["digest"] != profile_digest(p):
@@ -647,7 +692,7 @@ def validate_identity_profile(p):
         if e["key_format"] not in KEY_FORMATS:
             problems.append("stack[%d].key_format %r unknown" % (i, e["key_format"]))
         if e["weight_profile"].get("kind") not in WEIGHT_PROFILE_KINDS:
-            problems.append("stack[%d].weight_profile.kind %r is not supported in v1" % (i, e["weight_profile"].get("kind")))
+            problems.append("stack[%d].weight_profile.kind %r is not supported" % (i, e["weight_profile"].get("kind")))
         if e["trained_on"] not in ("base", "sft", "unknown"):
             problems.append("stack[%d].trained_on %r unknown" % (i, e["trained_on"]))
         if e["coverage"].get("verdict") not in ("ok", "warn", "error-forced"):
@@ -679,7 +724,10 @@ def validate_identity_profile(p):
                     problems.append("attachment.entries[%d] does not describe stack[%d]" % (i, i))
             if all(isinstance(a, dict) and "patch_entries" in a for a in entries) and "baseline_entries" in att \
                     and "patch_entries_total" in att:
-                got = att["baseline_entries"] + sum(a["patch_entries"] for a in entries)
+                # a phased adapter adds no patch entry to the MODEL (it is applied on per-level clones at sampling time)
+                got = att["baseline_entries"] + sum(
+                    a["patch_entries"] for a, e in zip(entries, stack)
+                    if not (isinstance(e, dict) and (e.get("weight_profile") or {}).get("kind") == "phased"))
                 if got != att["patch_entries_total"]:
                     problems.append("attachment.patch_entries_total is %d, baseline + entries is %d"
                                     % (att["patch_entries_total"], got))
@@ -689,10 +737,10 @@ def validate_identity_profile(p):
 def check_profile_in(profile_in, model_attachment, *, node=NODE):
     """Validate the chain input ``profile_in`` against the MODEL it arrives with. Raises, returns ``None``.
 
-    ``unsupported_feature``: newer ``schema_version``, a non-null ``phase_plan`` or a ``weight_profile.kind`` other
-    than ``constant`` (MP-16). ``incompatible_lora``: not an identity profile, or its attachment is not the string
-    stored on the MODEL (the profile belongs to another chain, so the new profile would describe LoRAs that are not
-    on this MODEL). An empty profile (pass-through start of a chain) matches any MODEL.
+    ``unsupported_feature``: newer ``schema_version`` or a ``weight_profile.kind`` this version does not know (a phased
+    profile is valid input: the chain may go on after it, MP-16). ``incompatible_lora``: not an identity profile, or
+    its attachment is not the string stored on the MODEL (the profile belongs to another chain, so the new profile
+    would describe LoRAs that are not on this MODEL). An empty profile (pass-through start of a chain) matches any MODEL.
     """
     mk = errors.make_issue
     if not isinstance(profile_in, dict) or profile_in.get("kind") != "photon_identity_profile":
@@ -705,19 +753,14 @@ def check_profile_in(profile_in, model_attachment, *, node=NODE):
             "unsupported_feature", node, "profile_in",
             "profile_in schema_version %r is newer than this MossPhoton knows (%d)"
             % (version, consts.IDENTITY_PROFILE_SCHEMA), "update MossPhoton or rebuild the chain"))
-    if profile_in.get("phase_plan") is not None:
-        raise errors.UnsupportedFeature(mk(
-            "unsupported_feature", node, "profile_in",
-            "profile_in carries a phase_plan; phased weights are not available in v1",
-            "remove the phase plan (MP-16 adds it after v1)"))
     stack = profile_in.get("stack")
     for e in stack if isinstance(stack, list) else []:
         wp = e.get("weight_profile") if isinstance(e, dict) else None
         if isinstance(wp, dict) and wp.get("kind") not in WEIGHT_PROFILE_KINDS:
             raise errors.UnsupportedFeature(mk(
                 "unsupported_feature", node, "profile_in",
-                "profile_in has weight_profile.kind %r; only constant is available in v1" % (wp.get("kind"),),
-                "use constant weights"))
+                "profile_in has weight_profile.kind %r; this version knows %s"
+                % (wp.get("kind"), ", ".join(WEIGHT_PROFILE_KINDS)), "update MossPhoton or rebuild the chain"))
     problems = validate_identity_profile(profile_in)
     if problems:
         raise errors.IncompatibleLora(mk(

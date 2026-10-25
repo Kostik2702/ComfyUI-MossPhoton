@@ -615,11 +615,24 @@ def resolve(preset_id, *, overrides=None, pin="", model_family=None, lora_profil
         warnings=tuple(warnings), preset_sha256=sha, manifest_sha256=manifest_sha, pin=installed_pin, pinned=pinned)
 
 
+def _known_under_another_role(stack, role):
+    """Stack items whose sha256 is a known, usable distill LoRA of ``role`` but whose own role differs (MP-50).
+
+    Only ``role == "distill"`` has a known table; an ``incompatible`` file is not offered for re-roling."""
+    out = []
+    for item in stack or ():
+        row = consts.KNOWN_DISTILL_LORAS.get(item.get("sha256") or "")
+        if row is not None and row["status"] != "incompatible" and row["role"] == role and item.get("role") != role:
+            out.append(item)
+    return out
+
+
 def evaluate_requirements(resolved, ctx, node="MossPhotonSampler"):
     """Issues for every ``constraints[]`` entry of the preset that fails against ``ctx``.
 
     ``ctx`` keys (missing ones default to the permissive value): ``lora_roles`` list, ``blocks_present`` dict,
-    ``latent_is_empty`` bool (default true), ``has_noise_mask`` bool, ``reference_photos`` bool. Severity comes
+    ``latent_is_empty`` bool (default true), ``has_noise_mask`` bool, ``reference_photos`` bool, ``lora_stack`` list of
+    ``{"basename", "role", "sha256"}`` (optional; names the files in a ``requires_lora_role`` error, MP-50). Severity comes
     from the entry, the code from its ``reason``. A ``recommends_input`` entry has reason ``none`` (the schema lists
     raisable codes only); its issue carries the registered status code ``reference_photos_recommended`` (info, MP-30
     M6) and its fix points to MossPhotonDiagnostics, the node that takes reference photos. Turbo additions (docs/03-turbo.md 5.3): a ``limits_lora_roles`` entry gives the status code
@@ -629,16 +642,32 @@ def evaluate_requirements(resolved, ctx, node="MossPhotonSampler"):
     """
     lora_roles = list(ctx.get("lora_roles") or [])
     blocks = ctx.get("blocks_present") or {}
+    stack = ctx.get("lora_stack")
     out = []
     for c in resolved.preset["constraints"]:
         kind, severity, reason = c["kind"], c["severity"], c["reason"]
+        detail = None
         if kind == "requires_lora_role":
             if c["role"] in lora_roles:
                 continue
             param = "identity_profile"
-            message = "preset %s needs a LoRA with role %r; roles present: %s" % (
-                resolved.preset["id"], c["role"], lora_roles or "none")
+            if stack is None:
+                present = "roles present: %s" % (lora_roles or "none")
+            else:
+                present = "present: %s" % (", ".join("%s:%s" % (s.get("basename"), s.get("role")) for s in stack)
+                                           or "none")
+            message = "preset %s needs a LoRA with role %r; %s" % (resolved.preset["id"], c["role"], present)
             fix = "add MossPhotonLoRAProfile (role=%s) and connect its identity_profile output" % c["role"]
+            wrong = _known_under_another_role(stack, c["role"])
+            if wrong:
+                # never re-role it for the user (SPEC: no silent changes): name the file and the role it was given
+                message = "preset %s needs a LoRA with role %r, but %s; %s" % (
+                    resolved.preset["id"], c["role"],
+                    "; ".join("%s is a known %s LoRA but is loaded with role %r" % (s["basename"], c["role"], s["role"])
+                              for s in wrong), present)
+                fix = "; ".join("set role=%s on the MossPhotonLoRAProfile that loads %s" % (c["role"], s["basename"])
+                                for s in wrong)
+                detail = {"known_distill": [{"basename": s["basename"], "role": s["role"]} for s in wrong]}
         elif kind == "requires_block":
             if blocks.get(c["block"]):
                 continue
@@ -671,7 +700,7 @@ def evaluate_requirements(resolved, ctx, node="MossPhotonSampler"):
                 resolved.preset["id"], c["input"].replace("_", " "))
             fix = ("connect the reference photos to MossPhotonDiagnostics (reference_images, with "
                    "consent_reference_photos on); the sampler has no such input, and v1 only counts the photos")
-        out.append(_issue(reason, node, param, message, fix, severity=severity))
+        out.append(_issue(reason, node, param, message, fix, severity=severity, detail=detail))
     if "distill" in lora_roles and resolved.preset["lora_policy"] not in _DISTILL_POLICIES:
         # R-T3, lead decision Q4: an error in the other presets, a warning in advanced.
         if resolved.preset["id"] == "advanced":

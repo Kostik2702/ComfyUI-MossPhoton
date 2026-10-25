@@ -216,16 +216,27 @@ class CheckProfileInTest(unittest.TestCase):
                 with self.assertRaises(errors.IncompatibleLora):
                     lora.check_profile_in(bad, None)
 
-    def test_newer_schema_phase_plan_and_phased_weights_are_unsupported_features(self):
+    def test_newer_schema_and_unknown_weight_profiles_are_unsupported_features(self):
         p = self.prof()
         newer = dict(copy.deepcopy(p), schema_version=2)
-        phased_plan = dict(copy.deepcopy(p), phase_plan={"x": 1})
-        phased_w = copy.deepcopy(p)
-        phased_w["stack"][0]["weight_profile"] = {"kind": "phased"}
-        for bad in (newer, phased_plan, phased_w):
+        unknown_w = copy.deepcopy(p)
+        unknown_w["stack"][0]["weight_profile"] = {"kind": "ramp"}
+        for bad in (newer, unknown_w):
             with self.subTest(keys=sorted(bad)[:2]):
                 with self.assertRaises(errors.UnsupportedFeature):
                     lora.check_profile_in(bad, lora.attachment_json(p["attachment"]))
+
+    def test_a_half_phased_profile_is_malformed_not_silently_constant(self):
+        p = self.prof()
+        for name, bad in (("plan without an entry", dict(copy.deepcopy(p), phase_plan={"x": 1})),):
+            with self.subTest(name):
+                with self.assertRaises(errors.IncompatibleLora) as ctx:
+                    lora.check_profile_in(bad, lora.attachment_json(p["attachment"]))
+                self.assertIn("malformed", str(ctx.exception))
+        phased_w = copy.deepcopy(p)
+        phased_w["stack"][0]["weight_profile"] = {"kind": "phased", "w0": 0.3, "w1": 0.9, "a": 0.2, "b": 0.6}
+        phased_w["digest"] = lora.profile_digest(phased_w)
+        self.assertTrue(any("phase_plan is null" in line for line in lora.validate_identity_profile(phased_w)))
 
     def test_malformed_profile_is_incompatible_lora(self):
         p = self.prof()

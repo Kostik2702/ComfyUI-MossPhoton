@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 — 2026-10-25
+
+### Added
+
+- Experimental phased LoRA weight (MP-16): `MossPhotonLoRAProfile` `profile = phased` with `w0`, `w1`, `a`, `b`; the weight
+  follows the sigma progress by a smoothstep. Runs only in `MossPhotonSamplerAdvanced` (the simple sampler refuses it);
+  label `not_reference` / `lora_phased`, warning `phase_lora_experimental`; one phased adapter per chain, applied after
+  the constant ones, transformer only. Clone per level (6 levels), not native hooks (`DEVIATIONS.md`, B11). Outside every
+  verification; see `USAGE.md`, 3.3.1 for usage and for one observation (one case, one seed).
+
+### Fixed
+
+- `missing_lora` now names a known distill LoRA loaded with a non-distill role and tells which node to fix; new warning
+  `distill_lora_role_mismatch`.
+
 ## 0.1.0 (first version)
 
 Scope: SFT only. Base: not verified in v1. Nothing is calibrated (`CALIBRATION.md`). Licence: MIT (`LICENSE`).

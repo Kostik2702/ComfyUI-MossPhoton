@@ -91,23 +91,23 @@ class InvalidInputsTinyTest(unittest.TestCase):
         with self.assertRaises(self.errors.UnsupportedModel):
             ss.run(self.tiny, model=fake)
 
-    def test_identity_safe_without_a_lora_stops_before_any_forward(self):
+    def test_identity_safe_without_a_lora_runs_with_a_note(self):
+        """MP-84: a role is never required: the run goes on (it stopped with ``missing_lora`` before) and the report notes it."""
         model, stats = self.counted_model()
-        with self.assertRaises(self.errors.MissingLora):
-            ss.run(self.tiny, model=model, preset_id="identity_safe")
-        self.assertEqual(stats.calls, 0)
+        result = ss.run(self.tiny, model=model, preset_id="identity_safe", overrides={"steps": 4})
+        self.assertGreater(stats.calls, 0)
+        self.assertIn("lora_not_recorded", ss.codes(result.report))
 
     def test_wardrobe_and_scene_safe_blocks(self):
-        constraints = ss.read_contract("constraints.json")
-        constraints["blocks_present"]["wardrobe"] = False
+        constraints = ss.bound_constraints(self.tiny, wardrobe=False)
         with self.assertRaises(self.errors.MissingRequiredInput):
             ss.run(self.tiny, preset_id="wardrobe_safe", constraints=constraints)
-        constraints["blocks_present"].update(wardrobe=True, scene=False)
+        constraints = ss.bound_constraints(self.tiny, wardrobe=True, scene=False)
         with self.assertRaises(self.errors.MissingRequiredInput):
             ss.run(self.tiny, preset_id="scene_safe", constraints=constraints)
 
     def test_scene_safe_refuses_a_source_latent(self):
-        constraints = ss.read_contract("constraints.json")
+        constraints = ss.bound_constraints(self.tiny)
         with ss.NoSample():
             with self.assertRaises(self.errors.UnsupportedSourceInput):
                 ss.run(self.tiny, preset_id="scene_safe", constraints=constraints,
@@ -116,21 +116,27 @@ class InvalidInputsTinyTest(unittest.TestCase):
         self.assertEqual(ok.report["preset"]["id"], "scene_safe")
 
     def test_pin_and_preset_errors(self):
-        with self.assertRaises(self.errors.PresetVersionMismatch):
-            ss.run(self.tiny, preset_pin="reference@2.0.0")
+        with ss.NoSample():
+            pinned = ss.run(self.tiny, preset_pin="reference@2.0.0")   # MP-84: a pin is advisory
+            slg = ss.run(self.tiny, overrides={"slg_layers": [99]})    # a layer the model does not have is dropped
+        self.assertIn("preset_pin_mismatch", ss.codes(pinned.report))
+        self.assertFalse(pinned.report["preset"]["pinned"])
+        self.assertEqual(slg.report["sampling"]["slg"]["mode"], "off")
+        self.assertIn("setting_adjusted", ss.codes(slg.report))
         with self.assertRaises(self.errors.UnknownPreset):
             ss.run(self.tiny, preset_id="turbo_9000")
-        with self.assertRaises(self.errors.InvalidOverride):
-            ss.run(self.tiny, overrides={"slg_layers": [99]})
+        with self.assertRaises(self.errors.InvalidOverride):   # a value of the wrong type: only an API caller
+            ss.run(self.tiny, overrides={"slg_layers": "22"})
 
-    def test_budget_exceeded_before_the_clone(self):
+    def test_a_plan_over_max_forwards_is_a_warning_and_the_run_goes_on(self):
         model, stats = self.counted_model()
-        with self.assertRaises(self.errors.BudgetExceeded):
-            ss.run(self.tiny, model=model, max_forwards=10)
-        self.assertEqual(stats.calls, 0)
+        result = ss.run(self.tiny, model=model, max_forwards=10, overrides={"steps": 6})
+        self.assertIn("forward_budget_exceeded", ss.codes(result.report))
+        self.assertEqual(stats.calls, result.report["forwards"]["model_calls"])
+        self.assertGreater(stats.calls, 0)
 
     def test_layout_outside_the_canvas(self):
-        constraints = ss.read_contract("constraints.json")
+        constraints = ss.bound_constraints(self.tiny)
         constraints["layout"] = {"items": 1, "bbox_coord_space": "abs_centralized", "bbox_format": "yxyx",
                                  "bboxes": [[-70, -70, 70, 70]], "extent": [-70, -70, 70, 70], "experimental": True}
         with self.assertRaises(self.errors.InvalidLayout):  # the canvas is 128 px: edges allowed up to +-64

@@ -4,7 +4,7 @@
   "title": "PHOTON_CONSTRAINTS (design 2.5)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "kind", "compiler_version", "private_paths", "user_text", "negative_text", "compiled_positive", "fields", "blocks_present", "prompt_sha256", "layout", "conflicts", "warnings", "text_encoder"],
+  "required": ["schema_version", "kind", "compiler_version", "private_paths", "user_text", "negative_text", "compiled_positive", "fields", "blocks_present", "prompt_sha256", "layout", "conflicts", "warnings", "text_encoder", "conditioning"],
   "properties": {
     "schema_version": {"const": 1},
     "kind": {"const": "photon_constraints"},
@@ -50,6 +50,15 @@
       }
     },
     "warnings": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "conditioning": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false, "required": ["positive_sha256", "negative_sha256"],
+          "properties": {"positive_sha256": {"$ref": "#/$defs/sha256"}, "negative_sha256": {"$ref": "#/$defs/sha256"}}
+        }
+      ]
+    },
     "text_encoder": {
       "oneOf": [
         {"type": "null"},

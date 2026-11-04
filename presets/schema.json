@@ -42,7 +42,9 @@
         "draft_fast",
         "advanced",
         "turbo_8step",
-        "turbo_identity"
+        "turbo_identity",
+        "turbo_darkroom_portrait",
+        "turbo_darkroom_fullbody"
       ]
     },
     "status": {
@@ -78,6 +80,9 @@
     },
     "sampling": {
       "$ref": "#/$defs/sampling"
+    },
+    "darkroom": {
+      "$ref": "#/$defs/darkroom"
     },
     "lora_policy": {
       "enum": [
@@ -214,6 +219,132 @@
         },
         "override_bounds": {
           "$ref": "#/$defs/override_bounds"
+        }
+      }
+    },
+    "darkroom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schedule",
+        "compose",
+        "commit",
+        "reexpose",
+        "finish"
+      ],
+      "properties": {
+        "schedule": {
+          "enum": [
+            "native",
+            "sa2_8"
+          ]
+        },
+        "compose": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cfg",
+            "slg"
+          ],
+          "properties": {
+            "cfg": {
+              "type": "number",
+              "minimum": 1.0,
+              "maximum": 30.0,
+              "x-unit": "guidance scale of the compose and commit phases; equals sampling.cfg"
+            },
+            "slg": {
+              "type": "boolean"
+            }
+          }
+        },
+        "commit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "r_c",
+            "r_k",
+            "w_compose",
+            "w_commit"
+          ],
+          "properties": {
+            "r_c": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "x-unit": "sigma progress r = (sigma_0 - sigma) / (sigma_0 - sigma_last); end of compose"
+            },
+            "r_k": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "x-unit": "sigma progress; end of commit (the character weight has reached w_commit)"
+            },
+            "w_compose": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 10.0,
+              "x-unit": "character LoRA weight before commit"
+            },
+            "w_commit": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 10.0,
+              "x-unit": "character LoRA weight after commit"
+            }
+          }
+        },
+        "reexpose": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "sigma_r"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "sigma_r": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 1.0,
+              "x-unit": "sigma the x0 readout is re-noised to"
+            }
+          }
+        },
+        "finish": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "r_f",
+            "cfg",
+            "eta",
+            "switch"
+          ],
+          "properties": {
+            "r_f": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "x-unit": "sigma progress; start of finish"
+            },
+            "cfg": {
+              "type": "number",
+              "minimum": 1.0,
+              "maximum": 30.0,
+              "x-unit": "guidance scale of the finish phase (the negative prompt acts here)"
+            },
+            "eta": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "x-unit": "noise injection of the finish phase (euler ancestral, rectified flow)"
+            },
+            "switch": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },

@@ -35,15 +35,24 @@ CORE_ALLOWED = {
     "adapter": ("errors", "canon", "fingerprint", "consts"),
     "schema_lite": (),
     "presets": ("canon", "errors", "schema_lite", "consts", "sigma"),
-    "constraints": ("errors", "canon", "consts", "fingerprint"),
+    "constraints": ("errors", "canon", "consts", "fingerprint", "constraints_contract"),
+    # MP-60 amendment: the leaf that the producer (constraints, nodes/prompt) and the consumer (solver) share, so the
+    # solver validates and fingerprints the constraints WITHOUT importing constraints (M4).
+    "constraints_contract": ("errors", "canon", "consts"),
     "lora": ("errors", "canon", "consts", "fingerprint", "phase"),
     "lora_phase": ("errors", "phase"),
+    # MP-84: the LoRA Phase plan (pure data, no comfy); the darkroom engine and the solver apply it, the node and lora.plan_patches
+    # produce / resolve it.
+    "lora_plan": ("errors", "consts"),
     "guidance": ("errors",),
     "phase": ("errors",),
+    # MP-57 amendment: the darkroom plan (pure) and its segment engine reuse the phased-LoRA pieces; the solver passes it the
+    # clone / guider factories, so it never imports the solver.
+    "darkroom": ("errors", "guidance", "lora_phase", "lora_plan", "phase", "rng", "sigma", "consts"),
     "guard": ("errors",),
     "routes": ("presets", "errors"),
     "solver": ("errors", "canon", "consts", "fingerprint", "adapter", "sigma", "rng", "report", "presets",
-               "guidance", "phase", "lora_phase", "guard"),
+               "guidance", "phase", "lora_phase", "lora_plan", "guard", "constraints_contract", "darkroom"),
     "saveio": ("errors", "canon", "consts"),
     "imagestats": ("errors",),
 }
@@ -190,10 +199,15 @@ def _check_edge(src, dst, is_leaf, where, violations):
         violations.append("%s: %s is a package __init__ or a nested module; it must not import (7.3)"
                           % (where, _name(src)))
     elif src and src[0] == "nodes":
-        if not (dst and dst[0] == "core"):
-            violations.append("%s: node module %s may import core/* only, found %s"
+        # Amendment MP-58: a node may also use finishing/* (SPEC 4.2 / 11: the pipelines of the second-queue nodes).
+        if not (dst and dst[0] in ("core", "finishing")):
+            violations.append("%s: node module %s may import core/* or finishing/* only, found %s"
                               % (where, _name(src), _name(dst)))
-    # other packages (calibration, finishing, root): only cycles and the import rules above apply
+    elif src and src[0] == "finishing":
+        if not (dst and dst[0] in ("core", "finishing")):
+            violations.append("%s: finishing module %s may import core/* or finishing/* only, found %s"
+                              % (where, _name(src), _name(dst)))
+    # other packages (calibration, root): only cycles and the import rules above apply
 
 
 def _check_cycles(edges, violations):
@@ -318,6 +332,16 @@ class PlantedViolationTest(unittest.TestCase):
             with self.subTest(mod=mod):
                 self.assertRed("M4", {"core/solver.py": "from .%s import x\n" % mod, "core/%s.py" % mod: ""})
 
+    def test_constraints_contract_is_the_shared_leaf_of_the_prompt_node_and_the_solver(self):
+        """Amendment MP-60: solver -> constraints_contract is allowed, the leaf itself imports errors/canon/consts only."""
+        self.assertClean({"core/solver.py": "from . import constraints_contract\n", "core/constraints_contract.py": ""})
+        self.assertClean({"core/constraints.py": "from .constraints_contract import validate_constraints\n",
+                          "core/constraints_contract.py": "from .canon import sha256_hex\n", "core/canon.py": ""})
+        self.assertRed("edge core.constraints_contract -> core.constraints",
+                       {"core/constraints_contract.py": "from .constraints import x\n", "core/constraints.py": ""})
+        self.assertRed("edge core.constraints_contract -> core.adapter",
+                       {"core/constraints_contract.py": "from .adapter import x\n", "core/adapter.py": ""})
+
     def test_unknown_core_module_goes_red(self):
         self.assertRed("unknown core module core.helpers", {"core/helpers.py": "from .errors import Issue\n"})
 
@@ -325,12 +349,22 @@ class PlantedViolationTest(unittest.TestCase):
         self.assertRed("must not import", {"core/__init__.py": "from . import errors\n"})
 
     def test_nodes_never_import_each_other(self):
-        self.assertRed("core/* only", {"nodes/a.py": "from . import b\n", "nodes/b.py": ""})
-        self.assertRed("core/* only", {"nodes/a.py": "from .b import X\n", "nodes/b.py": ""})
+        self.assertRed("core/* or finishing/* only", {"nodes/a.py": "from . import b\n", "nodes/b.py": ""})
+        self.assertRed("core/* or finishing/* only", {"nodes/a.py": "from .b import X\n", "nodes/b.py": ""})
 
     def test_nodes_may_not_import_other_packages(self):
-        self.assertRed("core/* only", {"nodes/a.py": "from ..calibration import m\n",
-                                       "calibration/__init__.py": "", "calibration/m.py": ""})
+        self.assertRed("core/* or finishing/* only", {"nodes/a.py": "from ..calibration import m\n",
+                                                      "calibration/__init__.py": "", "calibration/m.py": ""})
+
+    def test_nodes_may_import_finishing_and_finishing_may_import_core_not_nodes(self):
+        """Amendment MP-58 (design 7.3): node -> finishing is an allowed edge; finishing -> nodes is not."""
+        self.assertClean({"finishing/__init__.py": "", "finishing/p.py": "from ..core import errors\n",
+                          "nodes/a.py": "def f():\n    from ..finishing import p\n"})
+        self.assertRed("finishing module finishing.p may import core/* or finishing/* only",
+                       {"finishing/__init__.py": "", "finishing/p.py": "from ..nodes import a\n", "nodes/a.py": ""})
+        self.assertRed("finishing module finishing.p may import core/* or finishing/* only",
+                       {"finishing/__init__.py": "", "finishing/p.py": "from ..calibration import m\n",
+                        "calibration/__init__.py": "", "calibration/m.py": ""})
 
     def test_cycle_outside_the_table_goes_red(self):
         v = self.run_with({"calibration/__init__.py": "", "calibration/a.py": "from . import b\n",

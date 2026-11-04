@@ -153,7 +153,7 @@ class ReferenceExactLabelTest(unittest.TestCase):
                               "classified_by": "known_table", "official": True, "variant": "bf16",
                               "verified_matrix": True},
                  "family": sft["family"], "warnings": []}
-        with mock.patch.object(fingerprint, "identify_checkpoint", return_value=ident):
+        with mock.patch.object(fingerprint, "identify_checkpoint", ss.returning(ident)):
             result = ss.run(tiny)
         self.assertEqual(result.report["label"]["parity_class"], "reference_exact")
         self.assertEqual(result.report["model"]["family"], "moss-image-sft")

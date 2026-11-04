@@ -217,23 +217,18 @@ class GateTest(unittest.TestCase):
             stack.append({"index": i, "weight_profile": wp})
         return {"stack": stack, "phase_plan": phase.plan_to_dict(plan) if plan is not None else None}
 
-    def test_no_profile_and_a_constant_profile_pass_everywhere(self):
-        for allowed in (False, True):
-            self.assertIsNone(phase.check_phase_plan(None, node="N", allowed=allowed))
-            self.assertIsNone(phase.check_phase_plan(self.profile(kinds=("constant",)), node="N", allowed=allowed))
-            self.assertIsNone(phase.check_phase_plan({"stack": [], "phase_plan": None}, node="N", allowed=allowed))
-            self.assertIsNone(phase.check_phase_plan({}, node="N", allowed=allowed))
+    def test_no_profile_and_a_constant_profile_have_no_plan(self):
+        self.assertIsNone(phase.check_phase_plan(None, node="N"))
+        self.assertIsNone(phase.check_phase_plan(self.profile(kinds=("constant",)), node="N"))
+        self.assertIsNone(phase.check_phase_plan({"stack": [], "phase_plan": None}, node="N"))
+        self.assertIsNone(phase.check_phase_plan({}, node="N"))
 
-    def test_a_phased_profile_is_refused_outside_the_advanced_node_and_names_it(self):
+    def test_a_consistent_phased_profile_gives_its_plan_whatever_node_runs_it(self):
+        """MP-84: which node may RUN a phased weight is the solver's decision (the basic sampler runs it constant with the
+        warning ``phased_lora_demoted``); the profile check only asks that the profile describes itself consistently."""
         plan = phase.make_plan(1, 0.3, 0.9, 0.2, 0.6)
-        with self.assertRaises(errors.UnsupportedFeature) as ctx:
-            phase.check_phase_plan(self.profile(plan), node="MossPhotonSampler", allowed=False)
-        self.assertIn("MossPhotonSamplerAdvanced", str(ctx.exception))
-        self.assertEqual(ctx.exception.issue.node, "MossPhotonSampler")
-
-    def test_advanced_gets_the_plan(self):
-        plan = phase.make_plan(1, 0.3, 0.9, 0.2, 0.6)
-        self.assertEqual(phase.check_phase_plan(self.profile(plan), node="N", allowed=True), plan)
+        self.assertEqual(phase.check_phase_plan(self.profile(plan), node="MossPhotonSampler"), plan)
+        self.assertEqual(phase.check_phase_plan(self.profile(plan), node="N"), plan)
 
     def test_half_phased_profiles_are_refused(self):
         plan = phase.make_plan(1, 0.3, 0.9, 0.2, 0.6)
@@ -250,7 +245,7 @@ class GateTest(unittest.TestCase):
         for name, profile in cases.items():
             with self.subTest(name):
                 with self.assertRaises(errors.UnsupportedFeature):
-                    phase.check_phase_plan(profile, node="N", allowed=True)
+                    phase.check_phase_plan(profile, node="N")
 
 
 if __name__ == "__main__":

@@ -55,6 +55,39 @@ NEW_CODES = {
     "phase_lora_experimental": "warning",
     # MP-50: a known distill LoRA loaded with a role other than distill.
     "distill_lora_role_mismatch": "warning",
+    # MP-58: MossPhotonIdentityDetailer.
+    "face_large_skipped": "info",
+    "no_face_found": "info",
+    "detailer_rejected": "info",
+    "face_not_this_character": "info",
+    "reference_no_face": "warning",
+    # MP-60: the constraints do not describe the conditioning that arrived.
+    "constraints_conditioning_mismatch": "warning",
+    # MP-57 / MP-71: a run of a preset with a darkroom block (experimental).
+    "darkroom_experimental": "warning",
+    # MP-67: the commit boost of a constant character profile could not be applied.
+    "darkroom_boost_skipped": "warning",
+    # MP-67 / MP-71: finish_model connected and no model switch (switch_model off, or a preset without a darkroom block): ignored.
+    "finish_model_ignored": "warning",
+    # MP-71: a darkroom knob set on a preset without a darkroom block (or replaced by another input): ignored.
+    "darkroom_override_ignored": "warning",
+    # MP-73: a LoRA chain setting conflict degrades: a phased request runs constant / the text-encoder flag is ignored.
+    "phased_lora_demoted": "warning",
+    "lora_setting_ignored": "warning",
+    # MP-76: a pin differing from the installed preset only in sha8 runs the installed preset.
+    "preset_changed_same_version": "warning",
+    # MP-84 (owner 2026-11-02): a settings conflict degrades to a warning, never an exception.
+    "lora_not_recorded": "warning",
+    "phase_plan_ignored": "warning",
+    "setting_adjusted": "warning",
+    "override_outside_bounds": "warning",
+    "forward_budget_exceeded": "warning",
+    "preset_pin_mismatch": "warning",
+    "multiple_distill_loras": "warning",
+    # MP-84 review: an ordinary loader ran after a LoRA Phase node (the entries are applied on top of every patch).
+    "lora_plan_after_patches": "info",
+    # MP-84 re-review: a plan entry that acts in no phase its MODEL runs (a main texture entry next to a switched finish model).
+    "lora_plan_entry_inactive": "warning",
 }
 
 DMD2_SHA = "7683fe1fb51f73f5d690f24dd6b7f46f31ab9a9873729a854ac5c9a420ffe6f2"

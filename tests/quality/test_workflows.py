@@ -31,7 +31,7 @@ REPO = os.path.dirname(PKG)
 if PKG not in sys.path:
     sys.path.insert(0, PKG)
 
-from moss_photon.core import presets as presets_mod  # noqa: E402  (stdlib only)
+from moss_photon.core import consts, presets as presets_mod  # noqa: E402  (stdlib only)
 from tests.quality import snapshot_allowlist  # noqa: E402  (the one list of file names the snapshot may hold)
 
 SNAPSHOT_PATH = os.path.join(HERE, "object_info_snapshot.json")
@@ -41,14 +41,25 @@ DOCS_DIR = os.path.join(PKG, "docs")
 PRIMITIVES = ("INT", "FLOAT", "STRING", "BOOLEAN")
 CONTROL_VALUES = ("fixed", "increment", "decrement", "randomize")
 
-# workflow file -> (preset, LoRA roles in apply order)
+LORA_DMD2 = "lodestones-8-steps-dmd2-lora.safetensors"
+LORA_CHARACTER = "your_character_lora.safetensors"
+LORA_SECOND = "your_second_lora.safetensors"
+STOCK = "LoraLoaderModelOnly"
+PHASE = "MossPhotonLoRAPhase"
+
+# workflow file -> (preset, LoRA chain in apply order: (node type, lora_name, strength[, phase])). MP-84: the shipped workflows
+# use the stock loader (phase all) and, on the Darkroom preset, the LoRA Phase node; none uses the deprecated LoRA Profile.
 EXPECTED = {
     "sft_reference": ("reference", []),
-    "character_lora": ("identity_safe", ["character"]),
-    "multi_lora": ("identity_safe", ["character", "other"]),
-    "turbo_8step": ("turbo_8step", ["distill"]),
-    "turbo_identity": ("turbo_identity", ["distill", "character"]),
+    "character_lora": ("identity_safe", [(STOCK, LORA_CHARACTER, 0.8)]),
+    "multi_lora": ("identity_safe", [(STOCK, LORA_CHARACTER, 0.8), (STOCK, LORA_SECOND, 0.5)]),
+    "turbo_8step": ("turbo_8step", [(STOCK, LORA_DMD2, 1.0)]),
+    "turbo_identity": ("turbo_identity", [(STOCK, LORA_DMD2, 1.0), (STOCK, LORA_CHARACTER, 0.8)]),
+    "turbo_darkroom_portrait": ("turbo_darkroom_portrait",
+                                [(STOCK, LORA_DMD2, 1.0), (PHASE, LORA_CHARACTER, 0.8, "identity")]),
 }
+# node type -> number of leading widgets that describe the LoRA in ``widgets_values``
+LORA_NODES = {STOCK: 2, PHASE: 3, "MossPhotonLoRAProfile": 2}
 
 NOTE_REQUIRED = (
     "0.42.0", "8f04fd6ec", "frontend 1.55.18", "models/diffusion_models/", "models/text_encoders/", "models/vae/",
@@ -258,7 +269,10 @@ def _check_note(nodes, virtual):
 
 
 def chain_of(wf):
-    """(preset, pin, [roles in apply order]) following the sampler's model input through the LoRA profile nodes."""
+    """(preset, pin, [LoRA nodes in apply order], problems), following the sampler's model input back through the LoRA nodes.
+
+    A LoRA node is ``(node type, lora_name, strength[, phase])`` (``LORA_NODES``). The shipped workflows record no identity
+    profile: the sampler's ``identity_profile`` input is not connected and none of them uses the deprecated profile node."""
     nodes = {n["id"]: n for n in wf["nodes"]}
     link_src = {l[0]: l for l in wf["links"]}
     samplers = [n for n in wf["nodes"] if n["type"] == "MossPhotonSampler"]
@@ -269,31 +283,23 @@ def chain_of(wf):
     inputs = {s["name"]: s for s in sampler["inputs"]}
     widgets = sampler["widgets_values"]
     preset, pin = widgets[2], widgets[5]  # seed, control, preset, cfg, preview, preset_pin
-    roles = []
+    chain = []
     node = sampler
     while True:
         slot = {s["name"]: s for s in node["inputs"]}["model"]
         if slot.get("link") is None:
             break
         src = nodes[link_src[slot["link"]][1]]
-        if src["type"] != "MossPhotonLoRAProfile":
+        if src["type"] not in LORA_NODES:
             break
-        roles.append(src["widgets_values"][2])  # lora_name, strength_model, role
-        prof_in = {s["name"]: s for s in src["inputs"]}["profile_in"]
+        chain.append((src["type"],) + tuple(src["widgets_values"][:LORA_NODES[src["type"]]]))
         node = src
-        if prof_in.get("link") is None:
-            break
-    roles.reverse()
-    if roles:
-        link = inputs["identity_profile"].get("link")
-        if link is None or link_src[link][1] != _last_profile(wf, nodes, link_src, sampler):
-            problems.append("sampler identity_profile is not wired from the last LoRA Profile of the chain")
-    return preset, pin, roles, problems
-
-
-def _last_profile(wf, nodes, link_src, sampler):
-    slot = {s["name"]: s for s in sampler["inputs"]}["model"]
-    return link_src[slot["link"]][1]
+    chain.reverse()
+    if any(item[0] == "MossPhotonLoRAProfile" for item in chain):
+        problems.append("a shipped workflow uses the deprecated MossPhotonLoRAProfile")
+    if inputs["identity_profile"].get("link") is not None:
+        problems.append("the sampler's identity_profile is connected; the shipped workflows record no profile")
+    return preset, pin, chain, problems
 
 
 def workflow_files():
@@ -333,7 +339,8 @@ class TestSnapshot(unittest.TestCase):
     def test_snapshot_covers_the_eight_nodes_and_the_native_nodes(self):
         for name in ("MossPhotonSampler", "MossPhotonSamplerAdvanced", "MossPhotonSchedule", "MossPhotonLoRAProfile",
                      "MossPhotonPromptLayout", "MossPhotonEmptyLatent", "MossPhotonDiagnostics",
-                     "MossPhotonSaveImage", "UNETLoader", "CLIPLoader", "VAELoader", "VAEDecode"):
+                     "MossPhotonSaveImage", "MossPhotonIdentityDetailer", "MossPhotonLoRAPhase", "MossPhotonPromptSplit",
+                     "LoraLoaderModelOnly", "UNETLoader", "CLIPLoader", "VAELoader", "VAEDecode"):
             self.assertIn(name, self.snap["nodes"])
 
     def test_snapshot_holds_no_file_name_outside_the_allowlist(self):
@@ -377,13 +384,17 @@ class TestSnapshot(unittest.TestCase):
         import importlib
         pkg_init = importlib.import_module("moss_photon.nodes")
         classes, names = {}, {}
-        for modname in ("sampler", "schedule", "lora", "prompt", "latent", "diagnostics", "save"):
+        for modname in ("sampler", "schedule", "lora", "prompt", "latent", "diagnostics", "save", "detailer", "lora_plan",
+                        "prompt_split"):
             mod = importlib.import_module("moss_photon.nodes." + modname)
             classes.update(mod.NODE_CLASS_MAPPINGS)
             names.update(mod.NODE_DISPLAY_NAME_MAPPINGS)
         del pkg_init
         self.assertEqual(sorted(classes), sorted(n for n in self.snap["nodes"] if n.startswith("MossPhoton")))
-        self.assertEqual(len(classes), 8)
+        # the eight of SPEC 4.1, the second-queue detailer (MP-58) and the two helpers of consts.NODE_IDS_HELPERS (MP-84:
+        # LoRA Phase, Prompt Split); the darkroom is in the samplers (MP-71)
+        self.assertEqual(len(classes), 11)
+        self.assertEqual(sorted(classes), sorted(consts.NODE_IDS + consts.NODE_IDS_SECOND_QUEUE + consts.NODE_IDS_HELPERS))
         for name, cls in sorted(classes.items()):
             with self.subTest(node=name):
                 # the live file lists are this machine's; the shipped snapshot holds the neutral allowlist (MP-37)
@@ -408,18 +419,23 @@ class TestWorkflows(unittest.TestCase):
                 problems = validate_workflow(load_json(path), self.snap)
                 self.assertEqual(problems, [], "\n".join(problems))
 
-    def test_preset_pin_chain_and_roles(self):
+    def test_preset_pin_and_lora_chain(self):
         catalog = presets_mod.catalog()
-        for name, (preset_expected, roles_expected) in EXPECTED.items():
+        for name, (preset_expected, chain_expected) in EXPECTED.items():
             if name not in self.files:
                 continue
             with self.subTest(workflow=name):
-                preset, pin, roles, problems = chain_of(load_json(self.files[name]))
+                preset, pin, chain, problems = chain_of(load_json(self.files[name]))
                 self.assertEqual(problems, [])
                 self.assertEqual(preset, preset_expected)
                 self.assertEqual(pin, presets_mod.pin_of(catalog[preset_expected]),
                                  "stale preset_pin: re-run research/gen_workflows.py")
-                self.assertEqual(roles, roles_expected)
+                self.assertEqual(chain, chain_expected)
+
+    def test_no_shipped_workflow_uses_the_deprecated_profile_node(self):
+        for name, path in self.files.items():
+            with self.subTest(workflow=name):
+                self.assertNotIn("MossPhotonLoRAProfile", [n["type"] for n in load_json(path)["nodes"]])
 
     def test_candidate_presets_are_labelled_in_the_note(self):
         catalog = presets_mod.catalog()
@@ -465,11 +481,11 @@ class TestValidatorGoesRed(unittest.TestCase):
         self.assertTrue(any("turbo_9step" in p for p in problems), problems)
 
     def test_missing_lora_file(self):
-        problems = self.mutate(lambda wf: self.node(wf, "MossPhotonLoRAProfile")["widgets_values"].__setitem__(0, "moss/none_such.safetensors"))
+        problems = self.mutate(lambda wf: self.node(wf, STOCK)["widgets_values"].__setitem__(0, "moss/none_such.safetensors"))
         self.assertTrue(any("none_such" in p for p in problems), problems)
 
     def test_unlisted_placeholder_like_name_is_rejected(self):
-        problems = self.mutate(lambda wf: self.node(wf, "MossPhotonLoRAProfile")["widgets_values"].__setitem__(
+        problems = self.mutate(lambda wf: self.node(wf, STOCK)["widgets_values"].__setitem__(
             0, "your_other_lora.safetensors"))
         self.assertTrue(any("your_other_lora" in p for p in problems), problems)
 
@@ -590,7 +606,7 @@ class TestDocs(unittest.TestCase):
                 self.assertIn("Status: %s" % preset["status"], text)
                 if pid in ("photo_safe", "identity_safe", "wardrobe_safe", "scene_safe", "night_photo"):
                     self.assertIn("numerically equal to reference", text)
-                self.assertIn("pending MP-12 / calibration", text)
+                self.assertIn("pending calibration", text)
 
     def test_readme_and_usage_state_the_scope(self):
         readme, usage = self.read("README.md"), self.read("docs", "USAGE.md")

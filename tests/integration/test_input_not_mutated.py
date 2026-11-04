@@ -37,7 +37,7 @@ class InputNotMutatedTest(unittest.TestCase):
         tiny = self.tiny
         lora = ss.apply_lora(tiny.patcher, ss.make_lora_dict(tiny.patcher), 0.8)
         profile = ss.make_profile(lora, base_model=tiny.patcher, strength=0.8)
-        constraints = ss.read_contract("constraints.json")
+        constraints = ss.bound_constraints(self.tiny)
         return lora, profile, constraints
 
     def test_success_path(self):

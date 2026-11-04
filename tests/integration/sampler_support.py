@@ -21,6 +21,18 @@ def read_contract(name):
         return json.load(f)
 
 
+def bound_constraints(tiny, **blocks):
+    """The constraints fixture bound to the default conditioning of ``make_request`` (MP-60, audit F02: the sampler
+    validates the constraints and uses them only for the conditioning they describe). ``blocks`` sets a block flag
+    together with its field text, so the object stays consistent."""
+    from moss_photon.core import constraints_contract
+    c = read_contract("constraints.json")
+    for name, present in blocks.items():
+        c["blocks_present"][name] = present
+        c["fields"][name] = (c["fields"][name] or "x") if present else ""
+    return constraints_contract.bind_conditioning(c, tiny.make_cond(23), tiny.make_cond(9))
+
+
 def tensor_sha(t):
     return hashlib.sha256(t.detach().cpu().contiguous().numpy().tobytes()).hexdigest()
 
@@ -133,6 +145,14 @@ class NoSample:
         return False
 
 
+def returning(value):
+    """A plain function that returns ``value`` whatever it is called with. Use it as the replacement of a function that is
+    handed a MODEL (``mock.patch.object(..., new=returning(x))``) instead of ``return_value=x``: a Mock keeps every call's
+    arguments in ``call_args`` and sits in reference cycles, so the MODEL (and the patchers it was cloned from) stay alive until
+    the cyclic gc frees them all in one pass, which leaves a dead ``LoadedModel`` that the test, not the code, caused (MP-88)."""
+    return lambda *args, **kwargs: value
+
+
 def known_sft():
     """Patch ``fingerprint.identify_checkpoint`` so the fixture counts as the verified SFT checkpoint."""
     from unittest import mock
@@ -142,7 +162,7 @@ def known_sft():
                           "basename": "moss_image_sft_bf16.safetensors", "hash_source": "cache",
                           "classified_by": "known_table", "official": True, "variant": "bf16",
                           "verified_matrix": True}, "family": family, "warnings": []}
-    return mock.patch.object(fingerprint, "identify_checkpoint", return_value=ident)
+    return mock.patch.object(fingerprint, "identify_checkpoint", returning(ident))
 
 
 def retarget_profile(profile, model, *, baseline=0, attach=True):

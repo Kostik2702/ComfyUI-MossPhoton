@@ -9,7 +9,8 @@ from unittest import mock
 
 from moss_photon.core import canon, errors, presets, solver
 
-from .test_solver_plan import FakeSigmas, Scenario, Stop, constraints_fixture, good_facts, profile_fixture
+from .test_solver_plan import (FakeSigmas, Scenario, Stop, constraints_fixture, good_facts, layout_with_extent,
+                               profile_fixture)
 
 IDENT = {"identity": {"sha256": None, "size": 0, "basename": "unknown", "hash_source": "unavailable",
                       "classified_by": "none", "official": None, "variant": None, "verified_matrix": None},
@@ -50,11 +51,13 @@ class CheapChecksBeforeTheHashTest(unittest.TestCase):
         s.expect(code, **kw)
         self.assertEqual(s.identify.call_count, 0, "the checkpoint was hashed before the %s check" % code)
 
-    def test_missing_character_lora(self):
-        self.refused("missing_lora", preset_id="identity_safe")
-
-    def test_missing_distill_lora(self):
-        self.refused("missing_lora", preset_id="turbo_8step", cfg=1.0)
+    def test_a_missing_lora_role_is_a_note_and_the_run_hashes_and_goes_on(self):
+        """MP-84: no preset requires a LoRA role any more; the run is not refused, so the checkpoint IS hashed."""
+        for kw in (dict(preset_id="identity_safe"), dict(preset_id="turbo_8step", cfg=1.0)):
+            with self.subTest(**kw):
+                s = SpyScenario(self)
+                self.assertIn("lora_not_recorded", s.reach(**kw))
+                self.assertEqual(s.identify.call_count, 1)
 
     def test_missing_required_block(self):
         self.refused("missing_required_input", preset_id="wardrobe_safe")
@@ -78,7 +81,7 @@ class CheapChecksBeforeTheHashTest(unittest.TestCase):
 
     def test_a_layout_outside_the_canvas(self):
         c = constraints_fixture()
-        c["layout"] = {"items": 1, "extent": [-5000, 0, 0, 0]}
+        c["layout"] = layout_with_extent([-5000, 0, 0, 0])
         self.refused("invalid_layout", constraints=c)
 
     def test_invalid_native_sigmas(self):
@@ -87,13 +90,18 @@ class CheapChecksBeforeTheHashTest(unittest.TestCase):
     def test_invalid_input_sigmas(self):
         self.refused("invalid_schedule", sigmas=FakeSigmas([1.0, 0.5, 0.6, 0.0]))
 
-    def test_the_forward_budget(self):
-        self.refused("budget_exceeded", max_forwards=10)
+    def test_the_forward_budget_is_a_warning_and_the_run_goes_on(self):
+        s = SpyScenario(self)
+        self.assertIn("forward_budget_exceeded", s.reach(max_forwards=10))
+        self.assertEqual(s.identify.call_count, 1)
 
-    def test_the_preset_budget_of_a_turbo_run(self):
+    def test_the_preset_budget_of_a_turbo_run_is_a_warning_too(self):
         profile, facts = distill_profile("distill")
-        self.refused("budget_exceeded", preset_id="turbo_8step", cfg=1.0, identity_profile=profile, max_forwards=7,
-                     scenario={"facts": facts})
+        s = SpyScenario(self, facts=facts)
+        self.assertIn("forward_budget_exceeded", s.reach(preset_id="turbo_8step", cfg=1.0, identity_profile=profile,
+                                                         max_forwards=7))
+        limit = next(n for n in s.noted if n["code"] == "forward_budget_exceeded")
+        self.assertEqual((limit["detail"]["planned"], limit["detail"]["limit"]), (8, 7))
 
     def test_a_manifest_changed_budget_is_still_planned_after_the_family_is_known(self):
         """The early plan uses the first resolve; if the family-aware resolve differs, the plan is made again."""
@@ -110,8 +118,9 @@ class CheapChecksBeforeTheHashTest(unittest.TestCase):
                 eff["budget"]["max_forwards"] = 5
                 r = type(r)(**dict(r.__dict__, effective=eff))
             return r
-        with mock.patch.object(solver.presets, "resolve", spy), self.assertRaises(errors.BudgetExceeded):
-            s.run()
+        with mock.patch.object(solver.presets, "resolve", spy):
+            codes = s.reach()
+        self.assertIn("forward_budget_exceeded", codes)
         self.assertEqual(s.identify.call_count, 1)
         self.assertEqual(calls[-1], "moss-image-sft")
 
@@ -155,30 +164,35 @@ class KnownDistillWrongRoleTest(unittest.TestCase):
     DMD2 = "7683fe1fb51f73f5d690f24dd6b7f46f31ab9a9873729a854ac5c9a420ffe6f2"
     NAME = "lodestones-8-steps-dmd2-lora.safetensors"
 
-    def test_the_run_stops_with_an_error_that_names_the_file_and_the_roles(self):
+    def note_of(self, s, **kw):
+        s.reach(**kw)
+        return next(n for n in s.noted if n["code"] == "lora_not_recorded")
+
+    def test_the_run_notes_the_file_and_the_roles(self):
+        """MP-84: the same facts as the old error, as a warning: the run is not refused."""
         profile, facts = distill_profile("other")
         profile["stack"][0]["lora"].update(basename=self.NAME, sha256=self.DMD2)
         s = SpyScenario(self, facts=facts)
-        exc = s.expect("missing_lora", preset_id="turbo_8step", cfg=1.0, identity_profile=profile)
-        text = str(exc)
+        note = self.note_of(s, preset_id="turbo_8step", cfg=1.0, identity_profile=profile)
+        self.assertEqual(note["severity"], "warning")
+        text = note["message"] + " " + note["fix"]
         for needle in (self.NAME, "'other'", "role=distill", "known distill LoRA"):
             self.assertIn(needle, text)
-        self.assertEqual(s.identify.call_count, 0)
+        self.assertEqual(s.identify.call_count, 1)
 
     def test_no_role_is_changed_the_profile_is_untouched(self):
         profile, facts = distill_profile("other")
         profile["stack"][0]["lora"].update(basename=self.NAME, sha256=self.DMD2)
         before = copy.deepcopy(profile)
-        SpyScenario(self, facts=facts).expect("missing_lora", preset_id="turbo_8step", cfg=1.0, identity_profile=profile)
+        self.note_of(SpyScenario(self, facts=facts), preset_id="turbo_8step", cfg=1.0, identity_profile=profile)
         self.assertEqual(profile, before)
 
     def test_an_unknown_file_gets_the_pairs_listing(self):
         profile, facts = distill_profile("other")
         profile["stack"][0]["lora"].update(basename="mine.safetensors", sha256="a" * 64)
-        exc = SpyScenario(self, facts=facts).expect("missing_lora", preset_id="turbo_8step", cfg=1.0,
-                                                   identity_profile=profile)
-        self.assertIn("mine.safetensors:other", str(exc))
-        self.assertNotIn("known distill", str(exc))
+        note = self.note_of(SpyScenario(self, facts=facts), preset_id="turbo_8step", cfg=1.0, identity_profile=profile)
+        self.assertIn("mine.safetensors:other", note["message"])
+        self.assertNotIn("known distill", note["message"])
 
 
 class SlgOverrideOnTurboTest(unittest.TestCase):
@@ -190,10 +204,13 @@ class SlgOverrideOnTurboTest(unittest.TestCase):
         profile, facts = distill_profile("distill")
         return SpyScenario(self, facts=facts), profile
 
-    def test_the_default_request_still_refuses_it(self):
+    def test_the_default_request_drops_it_with_a_warning(self):
+        """MP-84: it was an ``invalid_override``; the run goes on without SLG (the clone, not the SLG clone, stops the spy)."""
         s, profile = self.turbo_scenario()
-        s.expect("invalid_override", preset_id="turbo_8step", cfg=1.5, identity_profile=profile, overrides=dict(self.SLG))
-        self.assertEqual(s.identify.call_count, 0)
+        codes = s.reach(preset_id="turbo_8step", cfg=1.5, identity_profile=profile, overrides=dict(self.SLG))
+        self.assertIn("setting_adjusted", codes)
+        self.assertNotIn("turbo_slg_experimental", codes)
+        self.assertFalse(s.spies["apply_slg"].called, "the dropped SLG override must not install the SLG clone")
 
     def test_the_advanced_flag_lets_it_through_to_the_slg_clone(self):
         s, profile = self.turbo_scenario()
@@ -203,9 +220,11 @@ class SlgOverrideOnTurboTest(unittest.TestCase):
         self.assertTrue(s.spies["apply_slg"].called, "SLG must be applied at cfg 1.5")
 
     def test_the_flag_changes_nothing_for_other_overrides(self):
+        """cfg 3.0 is outside the bounds [1, 2] of the preset: used as given, with a warning (MP-84; ``invalid_override``)."""
         s, profile = self.turbo_scenario()
-        s.expect("invalid_override", preset_id="turbo_8step", cfg=3.0, identity_profile=profile,
-                 overrides=dict(self.SLG), allow_slg_override=True)
+        codes = s.reach(preset_id="turbo_8step", cfg=3.0, identity_profile=profile, overrides=dict(self.SLG),
+                        allow_slg_override=True)
+        self.assertIn("override_outside_bounds", codes)
 
     def test_the_request_flag_defaults_to_off(self):
         self.assertFalse(solver.SampleRequest.__dataclass_fields__["allow_slg_override"].default)

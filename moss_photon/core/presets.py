@@ -21,15 +21,17 @@ from . import canon, consts, errors, schema_lite
 __all__ = [
     "OVERRIDE_KEYS", "ResolvedPreset", "preset_dir", "load_schema", "validate_preset", "catalog", "catalog_ids",
     "catalog_issues", "selectable_ids", "describe_catalog", "catalog_sha256", "preset_sha256", "pin_of", "parse_pin", "load_manifest",
-    "resolve", "diff_settings", "evaluate_requirements", "effective_view", "TURBO_PRESET_IDS", "ALL_PRESET_IDS",
+    "resolve", "diff_settings", "evaluate_requirements", "effective_view", "has_darkroom", "darkroom_diff", "SLG_KEYS", "TURBO_PRESET_IDS",
+    "ALL_PRESET_IDS",
 ]
 
 _log = logging.getLogger("MossPhoton")
 _logged_broken = set()
 
-# Turbo presets (docs/03-turbo.md 5). ``consts.PRESET_IDS`` stays the eight of SPEC 6.1; the catalog order is those eight
-# followed by the turbo ones.
-TURBO_PRESET_IDS = ("turbo_8step", "turbo_identity")
+# Turbo presets (docs/03-turbo.md 5), the darkroom ones (MP-71) included. ``consts.PRESET_IDS`` stays the eight of SPEC 6.1;
+# the catalog order is those eight followed by the turbo ones. The list is ``consts.TURBO_PRESET_IDS``: the report schema, the
+# preset schema and the fixture schema are cross-checked against that one literal.
+TURBO_PRESET_IDS = consts.TURBO_PRESET_IDS
 ALL_PRESET_IDS = tuple(consts.PRESET_IDS) + TURBO_PRESET_IDS
 _DISTILL_POLICIES = ("require_distill_profile", "require_distill_and_character_profile")
 
@@ -114,8 +116,9 @@ def validate_preset(obj, stem=None, schema=None):
     code; the turbo rules of ``_turbo_problems`` (distill policies need their ``requires_lora_role`` constraints, SLG off
     and ``recommended_final`` false; ``override_bounds`` ordered, default inside verified, ``max_forwards`` at least the
     bounds corner); every numeric leaf of ``sampling`` / ``budget`` (null ``max_forwards`` excluded, ``bool`` is not a number)
-    has a ``sources`` entry and every ``sources`` key names such a leaf; ``stable`` implies ``calibration.state ==
-    official``; ``experimental`` / ``preview_only`` imply ``ui.recommended_final == false``.
+    has a ``sources`` entry and every ``sources`` key names such a leaf (``darkroom.*`` numbers included); ``stable``
+    implies ``calibration.state == official``; ``experimental`` / ``preview_only`` imply ``ui.recommended_final == false``;
+    the rules of ``_darkroom_problems`` for the optional ``darkroom`` block.
     """
     found = schema_lite.validate(obj, schema if schema is not None else load_schema())
     problems = ["%s: %s" % (e.path or "(root)", e.message) for e in found]
@@ -137,7 +140,10 @@ def validate_preset(obj, stem=None, schema=None):
         info = errors.REASONS.get(c["reason"])
         if c["severity"] == "error" and (info is None or info.exc is None):
             problems.append("constraints[%d].reason: %r cannot be raised with severity error" % (i, c["reason"]))
-    leaves = set(_numeric_leaves({"sampling": smp, "budget": bud}))
+    sourced = {"sampling": smp, "budget": bud}
+    if "darkroom" in obj:  # MP-71: the phase values are numbers of the recipe like the sampling ones
+        sourced["darkroom"] = obj["darkroom"]
+    leaves = set(_numeric_leaves(sourced))
     if bud["max_forwards"] is None:
         leaves.discard("budget.max_forwards")
     missing, stale = sorted(leaves - set(obj["sources"])), sorted(set(obj["sources"]) - leaves)
@@ -149,7 +155,34 @@ def validate_preset(obj, stem=None, schema=None):
         problems.append("status: stable requires calibration.state official")
     if obj["status"] in ("experimental", "preview_only") and obj["ui"]["recommended_final"]:
         problems.append("ui.recommended_final: must be false for status %s" % obj["status"])
-    return problems + _turbo_problems(obj)
+    return problems + _turbo_problems(obj) + _darkroom_problems(obj)
+
+
+def _darkroom_problems(obj):
+    """Cross-field rules of the optional ``darkroom`` block (MP-71); empty for a preset without one.
+
+    The run would refuse the same things (``core/darkroom.py``) before the first forward; here the catalog refuses them
+    when the file is read, so a shipped preset can not be a plan that never runs. No LoRA is required (MP-84: the commit
+    weight boosts the ``identity`` entries of a LoRA Phase plan when there are some, else it is skipped with a warning),
+    ``compose.cfg`` is ``sampling.cfg`` (the one number the sampler resolves; the block repeats it so the block reads as a
+    whole), ``0 <= r_c <= r_k <= r_f <= 1`` and a weight change needs an open commit window. ``sa2_8`` with another step
+    count is not a problem: the run resamples its knots (``darkroom.sa2_values``).
+    """
+    block = obj.get("darkroom")
+    if block is None:
+        return []
+    problems = []
+    if block["compose"]["cfg"] != obj["sampling"]["cfg"]:
+        problems.append("darkroom.compose.cfg: %r must equal sampling.cfg %r" % (
+            block["compose"]["cfg"], obj["sampling"]["cfg"]))
+    c = block["commit"]
+    if not 0.0 <= c["r_c"] <= c["r_k"] <= block["finish"]["r_f"] <= 1.0:
+        problems.append("darkroom.commit: needs 0 <= r_c <= r_k <= finish.r_f <= 1, got %r, %r, %r" % (
+            c["r_c"], c["r_k"], block["finish"]["r_f"]))
+    elif c["w_compose"] != c["w_commit"] and not c["r_c"] < c["r_k"]:
+        problems.append("darkroom.commit: the weight moves %r -> %r over an empty commit window" % (
+            c["w_compose"], c["w_commit"]))
+    return problems
 
 
 def _turbo_problems(obj):
@@ -420,6 +453,7 @@ def _apply_settings(effective, settings, num_layers):
 
 _EPS = 1e-9
 _SLG_KEYS = ("slg_mode", "slg_layers", "slg_start", "slg_end")
+SLG_KEYS = _SLG_KEYS  # the sampling SLG overrides (the solver drops them on a darkroom preset)
 _ADVANCED_NODE = "MossPhotonSamplerAdvanced"
 
 
@@ -456,22 +490,87 @@ def _slg_changed(preset, base_smp, new_smp, overrides):
     return [key for key in _SLG_KEYS if key in given and new_smp[key] != base_smp[key]]
 
 
-def _bounds_problems(preset, base_smp, new_smp, overrides, allow_slg_override):
-    """``[(param, message)]`` for overrides outside ``sampling.override_bounds`` and, unless ``allow_slg_override``, for
-    SLG overrides on a distill preset."""
-    problems = []
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _tame_overrides(preset, base_smp, overrides, num_layers, allow_slg_override, node):
+    """``(overrides, [Issue])``: the overrides a run can use, each value that is outside what the engine can run moved to the
+    nearest one it can, with the warning ``setting_adjusted`` (MP-84: a setting conflict degrades, it does not stop).
+
+    ``cfg`` into ``[1, CFG_MAX]``, ``steps`` into ``[1, 1000]``, ``slg_start`` / ``slg_end`` into ``[0, 1]`` and swapped when
+    start > end, ``slg_layers`` without the layers the model does not have (``num_layers`` when known), duplicates and past
+    the sixteenth, ``slg_mode`` uncond_skip with no layer left becomes off, and SLG overrides on a distill preset outside the
+    Advanced node are dropped. A value of the wrong TYPE is not touched: the schema refuses it (only an API caller makes one).
+    Pure; ``overrides`` is not modified.
+    """
+    out = {k: v for k, v in overrides.items() if v is not None}
+    notes = []
+
+    def adjust(param, message, fix):
+        notes.append(_issue("setting_adjusted", node, param, message, fix, detail={"param": param}))
+
+    def clamp(name, low, high, why):
+        value = out.get(name)
+        if _is_number(value) and not low <= value <= high:
+            used = min(max(value, low), high)
+            out[name] = int(used) if name == "steps" else float(used)
+            adjust(name, "%s = %g is outside %g..%g (%s): %g was used" % (name, value, low, high, why, used),
+                   "set %s between %g and %g to drop this note" % (name, low, high))
+
+    clamp("cfg", 1.0, consts.CFG_MAX, "the guidance scale of this sampler is defined from 1")
+    steps = out.get("steps")
+    if _is_number(steps) and float(steps) == int(steps):
+        out["steps"] = int(steps)
+        clamp("steps", 1, 1000, "a run needs at least one step")
+    clamp("slg_start", 0.0, 1.0, "a fraction of the schedule")
+    clamp("slg_end", 0.0, 1.0, "a fraction of the schedule")
+    start, end = out.get("slg_start", base_smp["slg_start"]), out.get("slg_end", base_smp["slg_end"])
+    if _is_number(start) and _is_number(end) and start > end and ("slg_start" in out or "slg_end" in out):
+        out["slg_start"], out["slg_end"] = float(end), float(start)
+        adjust("slg_start", "slg_start %g is above slg_end %g: the two were swapped" % (start, end),
+               "set slg_start below slg_end to drop this note")
+    layers = out.get("slg_layers")
+    if isinstance(layers, (list, tuple)) and all(isinstance(x, int) and not isinstance(x, bool) for x in layers):
+        keep, seen = [], set()
+        for x in layers:
+            if 0 <= x <= 255 and (num_layers is None or x < num_layers) and x not in seen and len(keep) < 16:
+                keep.append(x)
+                seen.add(x)
+        if keep != list(layers):
+            adjust("slg_layers", "slg_layers %s holds layers the model does not have, repeats or more than 16: %s were used"
+                   % (list(layers), keep), "name each existing layer once to drop this note")
+        out["slg_layers"] = keep
+    if out.get("slg_mode", base_smp["slg_mode"]) == "uncond_skip" and not out.get("slg_layers", base_smp["slg_layers"]):
+        out["slg_mode"] = "off"
+        adjust("slg_mode", "slg_mode uncond_skip needs at least one layer and none is left: SLG is off",
+               "enter the layer indices to skip, or set slg_mode off")
+    if not allow_slg_override and preset["lora_policy"] in _DISTILL_POLICIES:
+        for key in _SLG_KEYS:
+            if key in out and out[key] != base_smp[key]:
+                del out[key]
+                adjust(key, "SLG is off in turbo presets and only the %s node may override it (experimental): %s is ignored"
+                       % (_ADVANCED_NODE, key), "use %s, or leave %s at the preset value" % (_ADVANCED_NODE, key))
+    return out, notes
+
+
+def _bounds_notes(preset, new_smp, overrides, node):
+    """Warnings ``override_outside_bounds`` for ``steps`` / ``cfg`` overrides outside ``sampling.override_bounds`` (a turbo
+    preset): the value is used as given (MP-84; it was ``invalid_override`` before)."""
+    notes = []
     given = _given(overrides)
     bounds = preset["sampling"].get("override_bounds")
-    if bounds:
-        for name in ("steps", "cfg"):
-            b = bounds[name]
-            if name in given and not b["min"] - _EPS <= new_smp[name] <= b["max"] + _EPS:
-                problems.append((name, "%s must be in [%s, %s], got %s" % (name, b["min"], b["max"], new_smp[name])))
-    if not allow_slg_override:
-        for key in _slg_changed(preset, base_smp, new_smp, overrides):
-            problems.append((key, "SLG is off in turbo presets; override %s only in the %s node (experimental)"
-                             % (key, _ADVANCED_NODE)))
-    return problems
+    for name in ("steps", "cfg") if bounds else ():
+        b = bounds[name]
+        if name in given and not b["min"] - _EPS <= new_smp[name] <= b["max"] + _EPS:
+            notes.append(_issue(
+                "override_outside_bounds", node, name,
+                "%s %s is outside the preset bounds [%s, %s] (verified [%s, %s]): it is used as given, the result is not "
+                "covered by any verification" % (name, new_smp[name], b["min"], b["max"], b["verified_min"], b["verified_max"]),
+                "use %s inside [%s, %s] for a verified run" % (name, b["verified_min"], b["verified_max"]),
+                detail={"param": name, "value": new_smp[name], "bounds": [b["min"], b["max"]],
+                        "verified": [b["verified_min"], b["verified_max"]], "source": copy.deepcopy(b["source"])}))
+    return notes
 
 
 def _override_notes(preset, smp, overrides, node, slg_changed=()):
@@ -482,7 +581,8 @@ def _override_notes(preset, smp, overrides, node, slg_changed=()):
     if bounds:
         for name in ("steps", "cfg"):
             b, value = bounds[name], smp[name]
-            if name in given and not b["verified_min"] - _EPS <= value <= b["verified_max"] + _EPS:
+            inside = b["min"] - _EPS <= value <= b["max"] + _EPS  # outside the bounds: override_outside_bounds says it
+            if name in given and inside and not b["verified_min"] - _EPS <= value <= b["verified_max"] + _EPS:
                 verified = [b["verified_min"], b["verified_max"]]
                 notes.append(_issue(
                     "turbo_setting_outside_verified", node, name,
@@ -520,17 +620,22 @@ def resolve(preset_id, *, overrides=None, pin="", model_family=None, lora_profil
     change in v1; (4) ``overrides`` (names in ``OVERRIDE_KEYS``; ``None`` values are treated as absent): validated
     against the schema bounds, integer settings cast to ``int``; any override whose value differs from the layers
     below gives ``customized`` plus a ``diff`` (``budget.nominal_steps`` follows ``steps``). ``num_layers`` (model
-    layers, optional) bounds ``slg_layers``. Turbo presets (docs/03-turbo.md 5.3): ``steps`` / ``cfg`` outside
-    ``sampling.override_bounds`` -> ``invalid_override`` (R-T6); inside the bounds but outside the verified range ->
-    warning ``turbo_setting_outside_verified`` with ``detail`` (R-T7); an SLG override that changes a distill preset ->
-    ``invalid_override`` (owner Q6), unless ``allow_slg_override`` (only MossPhotonSamplerAdvanced passes it; MP-30 M2:
-    "Advanced" of Q6 is that node), then the warning ``turbo_slg_experimental``; ``slg_ineffective_cfg1`` info when
-    SLG is requested at cfg 1 (R-T9). ``effective["sampling"]`` never carries ``override_bounds`` (it stays in
-    ``preset``). A preset whose own file is unusable raises ``invalid_preset_file`` naming it (m22).
+    layers, optional) bounds ``slg_layers``. MP-84: a value the engine cannot run is moved to the nearest one it can with the
+    warning ``setting_adjusted`` (``_tame_overrides``). Turbo presets (docs/03-turbo.md 5.3): ``steps`` / ``cfg`` outside
+    ``sampling.override_bounds`` -> warning ``override_outside_bounds``, the value is used (it was ``invalid_override``,
+    R-T6); inside the bounds but outside the verified range -> warning ``turbo_setting_outside_verified`` with ``detail``
+    (R-T7); an SLG override that changes a distill preset is dropped with ``setting_adjusted`` unless ``allow_slg_override``
+    (only MossPhotonSamplerAdvanced passes it; MP-30 M2: "Advanced" of Q6 is that node), then the warning
+    ``turbo_slg_experimental``; ``slg_ineffective_cfg1`` info when SLG is requested at cfg 1 (R-T9).
+    ``effective["sampling"]`` never carries ``override_bounds`` (it stays in ``preset``). A preset whose own file is unusable
+    raises ``invalid_preset_file`` naming it (m22).
 
     ``pin``: ``""`` -> warning ``preset_unpinned``, ``pinned = False``; else exact match of id, version and (when
-    given) sha8 against the installed entry or ``preset_version_mismatch``. Raises ``invalid_preset`` for an unknown
-    id, ``invalid_override``, ``calibration_required``. ``node`` names the node in the issues.
+    given) sha8 against the installed entry; a pin that differs only in sha8 runs the
+    installed entry with the warning ``preset_changed_same_version`` (``pinned`` stays true); a pin of another id or
+    version, or a malformed one, runs the installed entry with ``preset_pin_mismatch`` (MP-84; ``preset_version_mismatch``
+    before). Raises ``invalid_preset`` for an unknown id, ``invalid_override`` (an unknown name or a value of the wrong type:
+    only an API caller makes one), ``calibration_required``. ``node`` names the node in the issues.
     """
     cat, broken = _scan_catalog(directory)
     if preset_id in broken:  # m22: the file of THIS preset is unusable; the others still resolve
@@ -545,8 +650,18 @@ def resolve(preset_id, *, overrides=None, pin="", model_family=None, lora_profil
     warnings = []
     pinned = False
     if _check_pin:
-        parsed = parse_pin(pin, node)
-        if parsed is None:
+        try:
+            parsed = parse_pin(pin, node)
+            malformed = False
+        except errors.PresetVersionMismatch:  # MP-84: a pin is advisory, the installed preset always runs
+            parsed, malformed = None, True
+        if malformed:
+            warnings.append(_issue(
+                "preset_pin_mismatch", node, "preset_pin",
+                "preset_pin %r is malformed: the installed preset %s was used" % (pin, installed_pin),
+                "set preset_pin to %s (or clear it) to record the current recipe" % installed_pin,
+                detail={"workflow_pin": pin if isinstance(pin, str) else repr(pin), "installed_pin": installed_pin}))
+        elif parsed is None:
             warnings.append(_issue(
                 "preset_unpinned", node, "preset_pin",
                 "preset_pin is empty: installed %s was used" % installed_pin,
@@ -555,12 +670,22 @@ def resolve(preset_id, *, overrides=None, pin="", model_family=None, lora_profil
             bad = [name for name, ok in (
                 ("id", parsed["id"] == preset["id"]), ("version", parsed["version"] == preset["preset_version"]),
                 ("sha8", parsed["sha8"] is None or parsed["sha8"] == canon.short(sha, 8))) if not ok]
-            if bad:
-                raise _mismatch(
-                    "workflow was made with %s; installed is %s (differs in %s)" % (pin, installed_pin, ", ".join(bad)),
-                    "set preset_pin to the installed value %s to accept the change (results may differ, see CHANGELOG), "
-                    "or reinstall the MossPhoton version that carries %s" % (installed_pin, pin), node)
-            pinned = True
+            if bad == ["sha8"]:  # MP-76: same id and version, other content: run the installed entry and say so
+                warnings.append(_issue(
+                    "preset_changed_same_version", node, "preset_pin",
+                    "workflow pin %s and installed pin %s have the same version and another sha8: the installed preset "
+                    "was used, results may differ, see CHANGELOG" % (pin, installed_pin),
+                    "set preset_pin to the installed value %s to silence this warning" % installed_pin,
+                    detail={"workflow_pin": pin, "installed_pin": installed_pin}))
+            elif bad:
+                warnings.append(_issue(
+                    "preset_pin_mismatch", node, "preset_pin",
+                    "workflow was made with %s; installed is %s (differs in %s): the installed preset was used, results "
+                    "may differ, see CHANGELOG" % (pin, installed_pin, ", ".join(bad)),
+                    "set preset_pin to the installed value %s to record the current recipe, or reinstall the MossPhoton "
+                    "version that carries %s" % (installed_pin, pin),
+                    detail={"workflow_pin": pin, "installed_pin": installed_pin, "differs_in": bad}))
+            pinned = not bad or bad == ["sha8"]
     effective = {"sampling": {k: copy.deepcopy(v) for k, v in preset["sampling"].items() if k != "override_bounds"},
                  "budget": copy.deepcopy(preset["budget"])}
     layers = ["preset"]
@@ -596,9 +721,9 @@ def resolve(preset_id, *, overrides=None, pin="", model_family=None, lora_profil
     base = copy.deepcopy(effective)
     diff = []
     if overrides:
-        effective, problems = _apply_settings(effective, dict(overrides), num_layers)
-        if not problems:
-            problems = _bounds_problems(preset, base["sampling"], effective["sampling"], overrides, allow_slg_override)
+        overrides, adjusted = _tame_overrides(preset, base["sampling"], dict(overrides), num_layers, allow_slg_override, node)
+        warnings += adjusted
+        effective, problems = _apply_settings(effective, overrides, num_layers)
         if problems:
             raise _override_error(problems, node, preset=preset, allow_slg=allow_slg_override)
         layers.append("override")
@@ -608,6 +733,7 @@ def resolve(preset_id, *, overrides=None, pin="", model_family=None, lora_profil
                 "customized_run", node, "overrides",
                 "%d setting(s) differ from the preset: %s" % (len(diff), ", ".join(d["path"] for d in diff)),
                 "none needed; the diff is recorded in the report"))
+        warnings += _bounds_notes(preset, effective["sampling"], overrides, node)
         warnings += _override_notes(preset, effective["sampling"], overrides, node,
                                     _slg_changed(preset, base["sampling"], effective["sampling"], overrides))
     return ResolvedPreset(
@@ -627,6 +753,13 @@ def _known_under_another_role(stack, role):
     return out
 
 
+def _effective_role(item):
+    """The role a requirement rule uses for a stack item (MP-60, audit F03): ``distill`` for a file whose sha256 is in
+    ``consts.KNOWN_DISTILL_LORAS`` whatever role the user set, else the user's role. Nothing is rewritten."""
+    sha = item.get("sha256")
+    return "distill" if isinstance(sha, str) and sha in consts.KNOWN_DISTILL_LORAS else item.get("role")
+
+
 def evaluate_requirements(resolved, ctx, node="MossPhotonSampler"):
     """Issues for every ``constraints[]`` entry of the preset that fails against ``ctx``.
 
@@ -637,39 +770,76 @@ def evaluate_requirements(resolved, ctx, node="MossPhotonSampler"):
     raisable codes only); its issue carries the registered status code ``reference_photos_recommended`` (info, MP-30
     M6) and its fix points to MossPhotonDiagnostics, the node that takes reference photos. Turbo additions (docs/03-turbo.md 5.3): a ``limits_lora_roles`` entry gives the status code
     ``preset_lora_roles_exceeded`` (the constraint reason stays ``none``, ASSUMED: the schema lists raisable codes only);
-    a ``distill`` role in a preset without a distill policy gives ``incompatible_lora`` (error), in ``advanced`` the
-    warning ``distill_lora_non_turbo`` (lead decision Q4).
+    a ``distill`` role in a preset without a distill policy gives the warning ``distill_lora_non_turbo`` (an error outside
+    ``advanced`` before MP-84, lead decision Q4). A ``requires_lora_role`` entry is never an error (MP-84): a role that is not
+    recorded gives the warning ``lora_not_recorded`` (an info for the ``distill`` role: a merged distill checkpoint is
+    assumed, unless a known distill file sits in the stack under another role), and nothing when ``ctx["lora_present"]`` (the
+    MODEL carries LoRA patches or a LoRA Phase plan that no profile explains).
+
+    MP-60 (audit F03): with ``lora_stack`` given, a file whose sha256 is a known distill LoRA is a distill for every
+    rule here, whatever role the user set. It counts as no other role: it never satisfies ``requires_lora_role``
+    ``character`` (nor ``distill`` unless the user also set that role, MP-50: the error names the file), it is not an
+    extra role of ``limits_lora_roles``, and in a preset without a distill policy it is the distill error, naming the
+    file and the role it was given. An unknown hash keeps the user's role. ``blocks_unverified`` true (the constraints
+    do not describe the conditioning that arrived) skips the ``requires_block`` entries: neither passed nor failed.
     """
     lora_roles = list(ctx.get("lora_roles") or [])
     blocks = ctx.get("blocks_present") or {}
     stack = ctx.get("lora_stack")
+    if stack is None:
+        provided = effective = lora_roles
+    else:
+        effective = [_effective_role(s) for s in stack]
+        provided = [s.get("role") for s in stack if _effective_role(s) == s.get("role")]
     out = []
     for c in resolved.preset["constraints"]:
         kind, severity, reason = c["kind"], c["severity"], c["reason"]
         detail = None
         if kind == "requires_lora_role":
-            if c["role"] in lora_roles:
+            # MP-84: a role is never required. Ordinary loaders, a LoRA Phase plan and merged checkpoints are not recorded as
+            # roles, so a role that is not recorded is a note (and none when something else carries LoRA patches).
+            if c["role"] in provided or ctx.get("lora_present"):
                 continue
+            reason, severity = "lora_not_recorded", "warning"
             param = "identity_profile"
             if stack is None:
                 present = "roles present: %s" % (lora_roles or "none")
             else:
                 present = "present: %s" % (", ".join("%s:%s" % (s.get("basename"), s.get("role")) for s in stack)
                                            or "none")
-            message = "preset %s needs a LoRA with role %r; %s" % (resolved.preset["id"], c["role"], present)
-            fix = "add MossPhotonLoRAProfile (role=%s) and connect its identity_profile output" % c["role"]
+            message = ("preset %s expects a LoRA with role %r and none is recorded (%s); the run goes on, which is fine "
+                       "when the checkpoint already carries it" % (resolved.preset["id"], c["role"], present))
+            fix = "optional: add MossPhotonLoRAProfile (role=%s), an ordinary LoRA loader or MossPhotonLoRAPhase" % c["role"]
             wrong = _known_under_another_role(stack, c["role"])
             if wrong:
                 # never re-role it for the user (SPEC: no silent changes): name the file and the role it was given
-                message = "preset %s needs a LoRA with role %r, but %s; %s" % (
+                message = "preset %s expects a LoRA with role %r, but %s; %s" % (
                     resolved.preset["id"], c["role"],
                     "; ".join("%s is a known %s LoRA but is loaded with role %r" % (s["basename"], c["role"], s["role"])
                               for s in wrong), present)
                 fix = "; ".join("set role=%s on the MossPhotonLoRAProfile that loads %s" % (c["role"], s["basename"])
                                 for s in wrong)
                 detail = {"known_distill": [{"basename": s["basename"], "role": s["role"]} for s in wrong]}
+            claimed = [s for s in stack or () if c["role"] != "distill" and s.get("role") == c["role"]
+                       and _effective_role(s) == "distill"]
+            if claimed:
+                # the fix is the part of the one-line note that is never shortened, so it carries file and role
+                fix = ("; ".join("%s has role %r but is a known distill file, so it is not a %s LoRA: set role=distill "
+                                 "and use turbo_8step / turbo_identity, or remove it"
+                                 % (s.get("basename"), s.get("role"), c["role"]) for s in claimed)
+                       + "; add a real %s LoRA with MossPhotonLoRAProfile (role=%s)" % (c["role"], c["role"]))
+                detail = dict(detail or {}, known_distill_as_role=[
+                    {"basename": s.get("basename"), "role": s.get("role")} for s in claimed])
+            if c["role"] == "distill" and not wrong and not claimed:
+                # MP-84 (owner 2026-11-02): turbo comes from the preset and a merged distill checkpoint is legitimate, so a
+                # distill role nobody recorded is an info (a distill file loaded under another role stays a warning)
+                severity = "info"
+                message = ("preset %s expects a distill LoRA and none is recorded (%s); a merged distill checkpoint is "
+                           "assumed and the run goes on" % (resolved.preset["id"], present))
+                fix = ("none needed for a merged distill checkpoint; otherwise add an ordinary LoRA loader, MossPhotonLoRAPhase or "
+                       "MossPhotonLoRAProfile (role=distill)")
         elif kind == "requires_block":
-            if blocks.get(c["block"]):
+            if blocks.get(c["block"]) or ctx.get("blocks_unverified"):
                 continue
             param = "constraints"
             message = "preset %s needs a non-empty %r block" % (resolved.preset["id"], c["block"])
@@ -681,7 +851,7 @@ def evaluate_requirements(resolved, ctx, node="MossPhotonSampler"):
             message = "preset %s accepts only an empty latent without a noise mask" % resolved.preset["id"]
             fix = "connect MossPhotonEmptyLatent instead of an image-derived latent"
         elif kind == "limits_lora_roles":
-            extra = [r for r in lora_roles if r not in c["roles"]]
+            extra = [r for r in effective if r not in c["roles"]]
             if not extra:
                 continue
             # ASSUMED: the constraint reason is "none" (the schema lists raisable codes only); the code is fixed by the kind.
@@ -701,29 +871,130 @@ def evaluate_requirements(resolved, ctx, node="MossPhotonSampler"):
             fix = ("connect the reference photos to MossPhotonDiagnostics (reference_images, with "
                    "consent_reference_photos on); the sampler has no such input, and v1 only counts the photos")
         out.append(_issue(reason, node, param, message, fix, severity=severity, detail=detail))
-    if "distill" in lora_roles and resolved.preset["lora_policy"] not in _DISTILL_POLICIES:
+    if "distill" in effective and resolved.preset["lora_policy"] not in _DISTILL_POLICIES:
         # R-T3, lead decision Q4: an error in the other presets, a warning in advanced.
-        if resolved.preset["id"] == "advanced":
-            out.append(_issue(
-                "distill_lora_non_turbo", node, "identity_profile",
-                "a distill LoRA is built for 8 steps at CFG 1, preset advanced runs its own settings",
-                "use turbo_8step / turbo_identity, or set steps 8 and cfg 1.0 yourself"))
-        else:
-            out.append(_issue(
-                "incompatible_lora", node, "identity_profile",
-                "preset %s cannot run a distill LoRA (built for 8 steps at CFG 1)" % resolved.preset["id"],
-                "use turbo_8step / turbo_identity or remove the distill LoRA"))
+        mislabeled = [s for s in stack or () if _effective_role(s) == "distill" and s.get("role") != "distill"]
+        who = "".join(" %s is a known distill LoRA loaded with role %r." % (s.get("basename"), s.get("role"))
+                      for s in mislabeled)
+        how = "".join("; %s: set role=distill and use a turbo preset, or remove it" % s.get("basename")
+                      for s in mislabeled)
+        detail = ({"known_distill": [{"basename": s.get("basename"), "role": s.get("role")} for s in mislabeled]}
+                  if mislabeled else None)
+        # MP-84: a warning in every preset (it was an error outside ``advanced``): the preset decides turbo or not, the run
+        # goes on with the settings the preset has
+        out.append(_issue(
+            "distill_lora_non_turbo", node, "identity_profile",
+            "a distill LoRA is built for 8 steps at CFG 1, preset %s runs its own settings." % resolved.preset["id"] + who,
+            "use turbo_8step / turbo_identity, or set steps 8 and cfg 1.0 yourself" + how, detail=detail))
     return out
 
 
-def effective_view(preset_id, overrides=None, directory=None, allow_slg_override=False):
+_KNOB_PATHS = {
+    "schedule": ("schedule",), "compose_cfg": ("compose", "cfg"), "compose_slg": ("compose", "slg"),
+    "r_c": ("commit", "r_c"), "r_k": ("commit", "r_k"), "w_compose": ("commit", "w_compose"),
+    "w_commit": ("commit", "w_commit"), "reexpose": ("reexpose", "enabled"), "sigma_r": ("reexpose", "sigma_r"),
+    "r_f": ("finish", "r_f"), "finish_cfg": ("finish", "cfg"), "eta": ("finish", "eta"), "switch": ("finish", "switch"),
+}
+
+
+def has_darkroom(preset_id, directory=None):
+    """True when the usable catalog entry ``preset_id`` has a ``darkroom`` block (a broken or unknown id: False; ``resolve``
+    reports it)."""
+    return "darkroom" in (_load_catalog(directory).get(preset_id) or {})
+
+
+def darkroom_diff(base, new):
+    """``[{"path","base","effective"}]`` (sorted) of the leaves of the ``darkroom`` block ``base`` whose value in ``new``
+    (a dict of the same shape, may have more keys) differs; paths are ``darkroom.<group>.<name>``. ``compose.cfg`` is left
+    out: it is ``sampling.cfg``, which the sampling diff already carries."""
+    out = []
+
+    def walk(b, n, prefix):
+        for key, value in b.items():
+            path = "%s.%s" % (prefix, key)
+            if isinstance(value, dict):
+                walk(value, n[key], path)
+            elif n[key] != value and path != "darkroom.compose.cfg":
+                out.append({"path": path, "base": value, "effective": n[key]})
+
+    walk(base, new, "darkroom")
+    return sorted(out, key=lambda d: d["path"])
+
+
+def _patched_block(preset, sampling, knobs, node):
+    """The ``darkroom`` block of ``preset`` with ``knobs`` (engine names) applied, checked by the schema and by the
+    cross-field rules of ``_darkroom_problems``; ``invalid_override`` (issue node ``node``) otherwise."""
+    block = copy.deepcopy(preset["darkroom"])
+    for name, value in knobs.items():
+        path = _KNOB_PATHS[name]
+        target = block
+        for part in path[:-1]:
+            target = target[part]
+        target[path[-1]] = value
+    block["compose"]["cfg"] = sampling["cfg"]  # the compose guidance of a run is the effective sampling.cfg
+    schema = load_schema()
+    wrapper = {"$defs": schema["$defs"], "$ref": "#/$defs/darkroom"}
+    problems = [(e.path or "darkroom", e.message) for e in schema_lite.validate(block, wrapper)]
+    if not problems:
+        trial = dict(preset, darkroom=block,
+                     sampling=dict(preset["sampling"], cfg=sampling["cfg"], steps=sampling["steps"]))
+        problems = [("darkroom", m) for m in _darkroom_problems(trial)]
+    if problems:
+        raise _override_error(problems, node, preset=None)
+    return block
+
+
+def effective_view(preset_id, overrides=None, directory=None, allow_slg_override=False, darkroom_knobs=None,
+                   node="MossPhotonSampler"):
     """Payload of ``GET /mossphoton/presets/{id}/resolved`` (design 4.9). Pure: no model, no GPU, only the catalog.
 
-    Raises ``invalid_preset`` (unknown id) and ``invalid_override``; ``allow_slg_override`` is the Advanced node's
-    reading of ``resolve`` (NEW-1). ``forwards.expected_branch_forwards`` is
+    Raises ``invalid_preset`` (unknown id) and ``invalid_override`` (issue node ``node``); ``allow_slg_override`` is the
+    Advanced node's reading of ``resolve`` (NEW-1). ``forwards.expected_branch_forwards`` is
     ``steps * branches_per_step(cfg) + budget.extra_forwards`` (100 for reference, 50 for draft_fast at cfg 3).
+
+    A preset with a ``darkroom`` block (MP-71) adds ``payload["darkroom"]``, the block as the run will use it. The ``cfg``
+    override of such a preset is the finish guidance (the phase where the negative acts; ``sampling.cfg`` stays the
+    preset's compose guidance), so it lands in ``darkroom.finish.cfg`` unless the ``finish_cfg`` knob is given.
+    ``darkroom_knobs`` (the Advanced phase knobs by engine name, ``None`` = from the preset; ``compose_cfg`` becomes the
+    ``sampling.cfg`` override) are applied to the block, and a block value that differs from the preset's makes the view
+    ``customized`` with a ``darkroom.*`` diff entry, like the run. The sampling SLG overrides of such a preset are dropped
+    with a warning, as the run drops them. The forward count shown is the compose-guidance count (the finish steps run two
+    branches: the report has the exact number).
     """
-    r = resolve(preset_id, overrides=overrides, directory=directory, allow_slg_override=allow_slg_override,
+    overrides = dict(overrides) if overrides else None
+    knobs = {k: v for k, v in (darkroom_knobs or {}).items() if v is not None}
+    smp_overrides, extra_warnings = overrides, []
+    if has_darkroom(preset_id, directory):
+        smp_overrides = {k: v for k, v in (overrides or {}).items() if k != "cfg" and k not in _SLG_KEYS}
+        ignored = sorted(k for k in (overrides or {}) if k in _SLG_KEYS)
+        if ignored:
+            extra_warnings.append(_issue(
+                "darkroom_override_ignored", node, ignored[0],
+                "on a darkroom preset the sampling SLG settings %s are ignored; the darkroom SLG is compose_slg"
+                % ", ".join(ignored), "use compose_slg", detail={"fields": ignored, "preset": preset_id}))
+        finish_cfg = (overrides or {}).get("cfg")
+        if finish_cfg is not None:
+            if not _is_number(finish_cfg):
+                raise _override_error([("cfg", "the finish guidance must be a number in [1.0, %s], got %r"
+                                        % (consts.CFG_MAX, finish_cfg))], node, preset=None)
+            if not 1.0 <= finish_cfg <= consts.CFG_MAX:  # MP-84: the run moves it to the nearest guidance it can run
+                used = min(max(float(finish_cfg), 1.0), consts.CFG_MAX)
+                extra_warnings.append(_issue(
+                    "setting_adjusted", node, "cfg",
+                    "cfg = %g: on a darkroom preset the cfg widget is the finish guidance, defined from 1 to %g: %g is used"
+                    % (finish_cfg, consts.CFG_MAX, used), "set cfg to 0 (the preset's value) or between 1 and %g"
+                    % consts.CFG_MAX))
+                finish_cfg = used
+            knobs.setdefault("finish_cfg", float(finish_cfg))  # the finish_cfg knob wins over the cfg widget
+        if "compose_cfg" in knobs:
+            smp_overrides["cfg"] = knobs["compose_cfg"]
+    elif knobs:
+        names = sorted(knobs)
+        extra_warnings.append(_issue(
+            "darkroom_override_ignored", node, names[0],
+            "preset %s has no darkroom block: the darkroom setting(s) %s are ignored" % (preset_id, ", ".join(names)),
+            "choose a preset with a darkroom block", detail={"fields": names, "preset": preset_id}))
+    r = resolve(preset_id, overrides=smp_overrides or None, directory=directory, allow_slg_override=allow_slg_override,
                 _check_pin=False)
     smp, bud = r.effective["sampling"], r.effective["budget"]
     branches = _branches_per_step(smp["cfg"])
@@ -739,9 +1010,28 @@ def effective_view(preset_id, overrides=None, directory=None, allow_slg_override
                      "note": "exact for the steps shown; custom sigmas replace steps"},
         "requirements": copy.deepcopy(p["constraints"]),
         "guards": copy.deepcopy(p["guards"]),
-        "warnings": [w.to_dict() for w in r.warnings],
+        "warnings": [w.to_dict() for w in list(r.warnings) + extra_warnings],
         "not_known_before_the_run": list(_NOT_KNOWN),
     }
     if "override_bounds" in p["sampling"]:  # turbo presets only: the UI limits its steps / cfg inputs with it
         payload["override_bounds"] = copy.deepcopy(p["sampling"]["override_bounds"])
+    if "darkroom" in p:
+        try:
+            block = _patched_block(p, smp, {k: v for k, v in knobs.items() if k != "compose_cfg"}, node)
+        except errors.InvalidOverride as exc:
+            # MP-84: a run moves such a knob to the nearest value it can use (``darkroom.resolve_settings``); the panel shows
+            # the preset's own block and says so, it does not stop
+            payload["warnings"].append(_issue(
+                "setting_adjusted", node, exc.issue.param,
+                "the darkroom settings do not run as set (%s): the run moves them to the nearest usable values; the panel "
+                "shows the preset's block" % exc.issue.message, "correct the setting to drop this note").to_dict())
+            block = _patched_block(p, smp, {}, node)
+        block["compose"]["cfg"] = smp["cfg"]
+        changed = darkroom_diff(p["darkroom"], block)
+        if changed:
+            payload["diff"] = sorted(payload["diff"] + changed, key=lambda d: d["path"])
+            payload["customized"] = True
+        payload["darkroom"] = block
+        payload["forwards"]["note"] = ("compose guidance only: the finish phase (r >= darkroom.finish.r_f) runs two branches "
+                                       "per step at cfg above 1; the report has the exact count")
     return payload

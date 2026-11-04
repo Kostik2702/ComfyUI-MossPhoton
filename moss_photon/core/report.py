@@ -14,7 +14,7 @@ from . import canon, consts, errors
 
 __all__ = [
     "ReportBuilder", "RECIPE_HASH_PATHS", "recipe_hash", "validate_report", "format_summary", "with_diagnostics",
-    "redact",
+    "with_detailer", "redact",
 ]
 
 _PHASES = ("preflight_done", "sampling_done")
@@ -73,7 +73,22 @@ def _recipe_material(report):
     phase = _get(report, "lora.phase")
     if phase is not None:  # only a phased run has the key, so the hash of every other run is unchanged
         material["lora.phase"] = phase
+    plan = _get(report, "lora.plan")
+    if plan is not None:  # MP-84: only a run with LoRA Phase entries has the key, so the hash of every other run is unchanged
+        material["lora.plan"] = plan
+    darkroom = _get(report, "darkroom")
+    if darkroom is not None:  # MP-57: only a darkroom run has the key; what was OBSERVED (forwards, clones) is not recipe
+        material["darkroom"] = _darkroom_recipe(darkroom)
     return material
+
+
+def _darkroom_recipe(block):
+    """``darkroom`` without the counts observed during the run (they follow from the recipe, like ``forwards``)."""
+    out = copy.deepcopy(block)
+    out.pop("clones_built", None)
+    for row in list(out.get("phases", ())) + list(out.get("segments", ())):
+        row.pop("observed_sample_forwards", None)
+    return out
 
 
 def recipe_hash(report):
@@ -232,6 +247,7 @@ _SEMVER = re.compile(r"^[0-9]+[.][0-9]+[.][0-9]+$")
 _PIN = re.compile(r"^[a-z0-9_]+@[0-9]+[.][0-9]+[.][0-9]+#[0-9a-f]{8}$")
 _BASENAME = re.compile(r"^[^/\\]+$")
 _CODE = re.compile(r"^[a-z][a-z0-9_]*$")
+_RECIPE = re.compile(r"^[a-z][a-z0-9_]*@[0-9]+[.][0-9]+[.][0-9]+$")  # <preset id>@<preset_version> (MP-71)
 _UTC = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$")
 
 _ISSUE = _O({"code": "code", "severity": _E("error", "warning", "info"), "node": "str", "param": "str",
@@ -246,6 +262,77 @@ _PHASE = _O({
     "planned_sha256": "sha", "weights_sha256": "sha",
     "segments": _A(_O({"first_step": "int", "last_step": "int", "weight": "num"}), 1),
     "clones_built": "int"})
+
+# MP-84 (additive): lora.plan exists only in a run whose MODEL carries MossPhotonLoRAPhase entries. ``phase`` names equal
+# consts.LORA_PHASES (the one list); ``applied_in`` is ["run"] for a constant run, else the darkroom phases the entry ran in;
+# ``model`` is the MODEL the entry belongs to (the main model's entries first, then the finish_model's).
+_PLAN = _A(_O({"basename": "basename", "size": "int", "sha256": "sha|null", "strength": "num",
+               "phase": _E(*consts.LORA_PHASES), "applied_in": _A("str"), "model": _E("main", "finish")}))
+
+# MP-58 (additive): the optional top-level `detailer` section written by MossPhotonIdentityDetailer (SPEC 4.2 item 3).
+# The decision names equal finishing.face_detailer.DECISIONS (a unit test cross-checks them; core never imports finishing).
+_DET_SETTINGS = _O({
+    "size_gate_px": "num", "crop_factor": "num", "work_px": "int", "steps": "int", "cfg": "num", "sampler": "str",
+    "scheduler": "str", "denoise": "num", "feather": "num", "mask_dilate": "num", "min_face_px": "int",
+    "max_faces": "int", "det_conf": "num", "match_min": "num", "match_margin": "num", "min_delta": "num",
+    "arcface_det_min": "num", "yaw_max": "num", "track_iou_min": "num", "kps_shift_max": "num",
+    "color_match": "bool", "accept_without_references": "bool", "seed": "int"})
+# The detailer's own recipe (audit F05): separate from the sampler's recipe_hash, which describes the picture before it.
+_DET_RECIPE = _O({
+    "settings": _DET_SETTINGS,
+    "model": _O({"sha256": "sha|null", "basename": "str|null", "size": "int|null"}),
+    "lora": _A(_O({"role": "str", "basename": "str", "size": "int", "sha256": "sha|null", "strength_model": "num"})),
+    "vae_sha256": "sha|null", "input_sha256": _A("sha"), "prompt_sha256": "sha", "reference_sha256": "sha|null",
+    "recipe_hash": "sha"})
+_DET_FACE = _O({
+    "index": "int", "image_index": "int", "bbox": _A("num", 4, 4), "short_side_px": "num",
+    "size_gate": _O({"threshold_px": "num", "passed": "bool"}),
+    "decision": _E("accepted", "accepted_unscorable", "rejected", "skipped_large", "skipped_unscorable",
+                   "skipped_other_character", "skipped_ambiguous"),
+    "reason": "str|null", "rollback": "str|null", "unscorable": "bool", "unscorable_reason": "str|null", "character": "str|null",
+    "score_before": "num|null", "score_after": "num|null", "crop": "obj|null", "denoise": "num|null",
+    "steps": "int|null", "seed": "int|null", "color_match": "obj|null", "time_s": "num"})
+_DETAILER = _O({
+    "version": _E(1), "images": "int", "settings": _DET_SETTINGS,
+    "dependencies": _O({"detector": _O({"available": "bool", "model": "str|null"}),
+                        "arcface": _O({"available": "bool", "pack": "str|null"})}),
+    "references": _O({"connected": "bool", "consent": "bool", "used": "bool", "n_images": "int", "n_with_face": "int",
+                      "n_characters": "int"}),
+    "prompt": _O({"sha256": "sha", "trigger_used": "bool"}), "recipe": _DET_RECIPE,
+    "faces": _A(_DET_FACE),
+    "counts": _O({"faces": "int", "accepted": "int", "rejected": "int", "skipped": "int", "unscorable": "int"}),
+    "time_s": "num", "warnings": _A(_ISSUE)})
+
+# MP-57 (additive, experimental): the optional top-level `darkroom` section written by a run of a preset with a darkroom block
+# (MP-71: MossPhotonSampler / MossPhotonSamplerAdvanced; `recipe` is `<preset id>@<preset_version>`). The names equal
+# core/darkroom.py (PHASE_NAMES, the model keys, the sampler keys, VERSION, LABEL); a unit test cross-checks them.
+_DK_MODEL = _E("main", "finish")
+_DK_SAMPLER = _E("euler", "euler_ancestral_rf")
+_DK_RNG = _O({"enabled": "bool", "offset": "int", "seed": "int|null"})
+_DARKROOM = _O({
+    "version": _E(1), "recipe": "recipe", "label": _E("darkroom_experimental"), "neutral": "bool",
+    "overrides": _A("str"), "progress": _E("sigma_progress"), "schedule": _E("native", "sa2_8"), "steps": "int",
+    "paths": _A(_O({"steps": "int", "sigmas_sha256": "sha"}), 1, 2),
+    "settings": _O({
+        "compose": _O({"cfg": "num", "slg": "bool", "slg_layers": _A("int"), "slg_start": "num", "slg_end": "num"}),
+        "commit": _O({"r_c": "num", "r_k": "num", "w_compose": "num", "w_commit": "num"}),
+        "reexpose": _O({"enabled": "bool", "sigma_r": "num"}),
+        "finish": _O({"r_f": "num", "cfg": "num", "eta": "num", "switch": "bool"})}),
+    "phases": _A(_O({
+        "name": _E("compose", "commit", "hold", "finish"), "r_start": "num", "r_end": "num", "sigma_start": "num",
+        "sigma_end": "num", "steps": "int", "first_step": "int|null", "last_step": "int|null", "cfg": "num",
+        "slg": "bool", "weight_first": "num|null", "weight_last": "num|null", "model": _DK_MODEL,
+        "sampler": _DK_SAMPLER, "expected_sample_forwards": "int", "observed_sample_forwards": "int|null"}), 1, 4),
+    "segments": _A(_O({
+        "first_step": "int", "last_step": "int", "path": "int", "cfg": "num", "slg": "bool", "weight": "num|null",
+        "model": _DK_MODEL, "sampler": _DK_SAMPLER, "eta": "num", "reexpose_before": "bool", "sigma_start": "num",
+        "sigma_end": "num", "expected_sample_forwards": "int", "observed_sample_forwards": "int|null"}), 1),
+    "rng": _O({"main_seed": "int", "reexpose": _DK_RNG, "noise": _DK_RNG}),
+    "character": _O({"mode": _E("phased_adapter", "constant_profile", "constant_profile_extra_patch",
+                                "lora_plan_extra_patch", "phased_adapter+lora_plan_extra_patch"),
+                     "stack_index": "int|null", "profile_phase_plan_replaced": "bool", "base_strength": "num|null",
+                     "boost_skipped": "str|null"}, {"boosted_entries": _A("str")}),
+    "clones_built": "int|null"})
 
 _SPEC = _O({
     "schema_version": _E(1),
@@ -299,7 +386,7 @@ _SPEC = _O({
             "entries_expected": "int", "entries_observed": "int", "baseline_entries": "int", "uuid_match": "bool",
             "extra_entries": "int", "keys_sample": _A("str", 0, 20)}),
         "te_applied": "bool", "profile_digest": "sha|null"}, {
-        "phase": _PHASE}),
+        "phase": _PHASE, "plan": _PLAN}),
     "guards": _O({
         "finite_check": _E("passed", "failed", "skipped"),
         "items": _A(_O({"id": "str", "status": _E("not_run"),
@@ -318,7 +405,7 @@ _SPEC = _O({
     "privacy": _O({"prompts_logged": _E(False), "reference_photos_logged": _E(False)}),
     "recipe_hash": "sha",
     "created_utc": "str",
-}, {"diagnostics": "obj"})
+}, {"diagnostics": "obj", "detailer": _DETAILER, "darkroom": _DARKROOM})
 
 # Numeric lower bounds of the schema (path of the leaf -> minimum).
 _MINIMUMS = {
@@ -328,7 +415,7 @@ _MINIMUMS = {
 }
 
 
-_PATTERNS = {"sha": _SHA, "semver": _SEMVER, "pin": _PIN, "basename": _BASENAME, "code": _CODE}
+_PATTERNS = {"sha": _SHA, "semver": _SEMVER, "pin": _PIN, "basename": _BASENAME, "code": _CODE, "recipe": _RECIPE}
 
 
 def _type_ok(name, value):
@@ -443,11 +530,28 @@ def format_summary(report):
     stack = _get(report, "lora.stack")
     if stack:
         lines.append("lora: %d adapter(s)" % len(stack))
+    plan = _get(report, "lora.plan")
+    if plan:
+        lines.append("lora phase plan: %d entr%s (%s)" % (
+            len(plan), "y" if len(plan) == 1 else "ies", ", ".join(str(e.get("phase")) for e in plan)))
     phase = _get(report, "lora.phase")
     if isinstance(phase, dict):
         lines.append("phased lora (experimental): stack[%s] %s -> %s over progress %s..%s, %s segment(s)" % (
             phase.get("stack_index"), phase.get("w0"), phase.get("w1"), phase.get("a"), phase.get("b"),
             len(phase.get("segments") or [])))
+    dk = report.get("darkroom")
+    if isinstance(dk, dict):
+        st = dk.get("settings") or {}
+        lines.append("darkroom %s (experimental): %s steps in %s segment(s), cfg %s -> %s, character weight %s -> %s" % (
+            dk.get("recipe"), dk.get("steps"), len(dk.get("segments") or []), (st.get("compose") or {}).get("cfg"),
+            (st.get("finish") or {}).get("cfg"), (st.get("commit") or {}).get("w_compose"),
+            (st.get("commit") or {}).get("w_commit")))
+    det = report.get("detailer")
+    if isinstance(det, dict):
+        counts = det.get("counts") or {}
+        lines.append("detailer: %s face(s): %s accepted, %s rejected, %s skipped, %s unscorable" % (
+            counts.get("faces"), counts.get("accepted"), counts.get("rejected"), counts.get("skipped"),
+            counts.get("unscorable")))
     warns = report.get("warnings") or []
     if warns:
         lines.append("warnings: " + ", ".join(str(w.get("code")) for w in warns if isinstance(w, dict)))
@@ -468,6 +572,23 @@ def with_diagnostics(report, diagnostics):
     if isinstance(block, dict):
         block.setdefault("parent_recipe_hash", report.get("recipe_hash"))
     out["diagnostics"] = block
+    return out
+
+
+def with_detailer(report, section):
+    """Deep copy of ``report`` with the ``detailer`` section attached; ``recipe_hash`` is kept (the sampler recipe).
+
+    Raises ``output_error`` when the result does not validate (the producer is wrong, not the user) and
+    ``unsupported_feature`` for a newer ``schema_version``. The original is not mutated.
+    """
+    _check_known_version(report)
+    out = copy.deepcopy(report)
+    out["detailer"] = copy.deepcopy(section)
+    problems = validate_report(out)
+    if problems:
+        raise errors.OutputError(errors.make_issue(
+            "output_error", "MossPhotonIdentityDetailer", "report",
+            "the detailer section does not validate: " + "; ".join(problems[:5]), "report this as a bug"))
     return out
 
 
@@ -531,4 +652,9 @@ def redact(report, *, keep_basenames=True):
         te = out.get("text_encoder")
         if isinstance(te, dict) and "basename" in te:
             te["basename"] = "redacted"
+        recipe = _get(out, "detailer.recipe")  # MP-58: the detailer's recipe names the same files
+        if isinstance(recipe, dict):
+            for item in [recipe.get("model")] + list(recipe.get("lora") or []):
+                if isinstance(item, dict) and item.get("basename") is not None:
+                    item["basename"] = "redacted"
     return out

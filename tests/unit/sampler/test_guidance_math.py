@@ -119,6 +119,26 @@ class MiscTest(unittest.TestCase):
         self.assertIs(guidance.apply_slg(sentinel, layers=[], start=0.0, end=1.0), sentinel)
         self.assertIs(guidance.apply_slg(sentinel, layers="", start=0.0, end=1.0), sentinel)
 
+    def test_the_cond_hook_slot_is_read_and_put_back(self):
+        class Patcher:
+            def __init__(self, options):
+                self.model_options = options
+
+            def set_model_sampler_calc_cond_batch_function(self, fn):
+                self.model_options["sampler_calc_cond_batch_function"] = fn
+
+        def foreign(args):
+            return args
+
+        empty, foreign_held = Patcher({}), Patcher({"sampler_calc_cond_batch_function": foreign})
+        self.assertIsNone(guidance.cond_hook_slot(empty))
+        self.assertIs(guidance.cond_hook_slot(foreign_held), foreign)
+        for patcher, before in ((empty, None), (foreign_held, foreign)):
+            patcher.set_model_sampler_calc_cond_batch_function(lambda args: args)   # what an in-place SLG does
+            guidance.restore_cond_hook_slot(patcher, before)
+        self.assertEqual(empty.model_options, {}, "an empty slot is removed, not set to None")
+        self.assertIs(foreign_held.model_options["sampler_calc_cond_batch_function"], foreign)
+
     def test_describe_slg(self):
         self.assertEqual(guidance.describe_slg("uncond_skip", "22", 0, 1, (0.0, 1.0)),
                          {"mode": "uncond_skip", "layers": [22], "start": 0.0, "end": 1.0, "sigma_window": [0.0, 1.0]})

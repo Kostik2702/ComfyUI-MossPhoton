@@ -69,12 +69,12 @@ The preset file declares no constraint.
 
 ## A/B report
 
-Pending MP-12 / calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
+Pending calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
 
 ### Examples of successes
 
-pending MP-12 / calibration.
+pending calibration.
 
 ### Examples of failures and worst cases
 
-pending MP-12 / calibration.
+pending calibration.

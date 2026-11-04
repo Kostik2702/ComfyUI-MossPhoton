@@ -4,11 +4,11 @@
 
 Status: candidate | Label: candidate | Group: Candidate | Recommended final: yes
 
-Preset version 1.0.0, pin `identity_safe@1.0.0#b079c81b`, schema version 1. Catalog summary: Reference numbers plus a mandatory character LoRA profile; identity score not available in v1.
+Preset version 1.0.0, pin `identity_safe@1.0.0#52768c95`, schema version 1. Catalog summary: Reference numbers plus a mandatory character LoRA profile; identity score not available in v1.
 
 ## Purpose
 
-One character with a compatible character LoRA (SPEC 6.1). It adds the rule that a character LoRA profile must be present before sampling starts.
+One character with a compatible character LoRA (SPEC 6.1). A character LoRA is expected; since 0.3.0 none is required.
 
 File description: One character with a compatible character LoRA. Constant, user-chosen LoRA weight; phased weight is not enabled.
 
@@ -47,14 +47,14 @@ Read from `presets/identity_safe.json`. These are the values the sampler uses wh
 
 Always: `model`, `positive`, `negative`, `latent`, `seed`. Then:
 
-- A `MossPhotonLoRAProfile` with role `character`, connected to the sampler's `identity_profile` (missing: error `missing_lora` before any forward).
+- A character LoRA: an ordinary LoRA loader (it acts in every phase), `MossPhotonLoRAPhase`, or the deprecated `MossPhotonLoRAProfile` (role `character`) connected to the sampler's `identity_profile`. A role nobody recorded gives the note `lora_not_recorded`, never an error.
 - Optional: reference photos at the Diagnostics node (info only; no detector exists in v1).
 
 Constraints evaluated before sampling (from the preset file):
 
 | Id | Kind | Severity | Reason code | Role / block / input |
 |---|---|---|---|---|
-| `requires_character_lora` | requires_lora_role | error | missing_lora | character |
+| `requires_character_lora` | requires_lora_role | warning | none | character |
 | `recommends_reference_photos` | recommends_input | info | none | reference_photos |
 
 Guards declared by the preset (none of them runs in v1):
@@ -78,18 +78,18 @@ Guards declared by the preset (none of them runs in v1):
 
 ## Limitations
 
-- LoRA strength is not set by the preset; no verified strength exists for any character LoRA. The weight is constant (phased weight is MP-16, not in v1).
+- LoRA strength is not set by the preset; no verified strength exists for any character LoRA. The weight is constant (a phased weight exists only as the experimental `phased` profile of the deprecated `MossPhotonLoRAProfile`, since 0.2.0).
 - No identity score exists in v1 (no detector or ArcFace dependency): the report can not say that identity was preserved. The identity gate (SPEC 10) has not been run.
 - The guard `identity_score` is declared for the second queue and not implemented.
 
 ## A/B report
 
-Pending MP-12 / calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
+Pending calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
 
 ### Examples of successes
 
-pending MP-12 / calibration.
+pending calibration.
 
 ### Examples of failures and worst cases
 
-pending MP-12 / calibration.
+pending calibration.

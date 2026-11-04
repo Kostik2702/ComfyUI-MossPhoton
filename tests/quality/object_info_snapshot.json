@@ -80,6 +80,47 @@
    ],
    "output_node": false
   },
+  "LoraLoaderModelOnly": {
+   "category": "loaders",
+   "display_name": "LoraLoaderModelOnly",
+   "input": {
+    "required": {
+     "lora_name": [
+      [
+       "lodestones-8-steps-dmd2-lora.safetensors",
+       "your_character_lora.safetensors",
+       "your_second_lora.safetensors"
+      ]
+     ],
+     "model": [
+      "MODEL"
+     ],
+     "strength_model": [
+      "FLOAT",
+      {
+       "default": 1.0,
+       "max": 100.0,
+       "min": -100.0,
+       "step": 0.01
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "model",
+     "lora_name",
+     "strength_model"
+    ]
+   },
+   "output": [
+    "MODEL"
+   ],
+   "output_name": [
+    "MODEL"
+   ],
+   "output_node": false
+  },
   "MossPhotonDiagnostics": {
    "category": "MossPhoton/3 Diagnostics",
    "display_name": "Moss Photon Diagnostics",
@@ -180,9 +221,204 @@
    ],
    "output_node": false
   },
+  "MossPhotonIdentityDetailer": {
+   "category": "MossPhoton/5 Finishing",
+   "display_name": "Moss Photon Identity Detailer",
+   "input": {
+    "optional": {
+     "accept_without_references": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "character_match_min": [
+      "FLOAT",
+      {
+       "default": 0.3,
+       "max": 1.0,
+       "min": 0.0,
+       "round": 0.001,
+       "step": 0.01
+      }
+     ],
+     "consent_reference_photos": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "max_faces": [
+      "INT",
+      {
+       "default": 8,
+       "max": 16,
+       "min": 1
+      }
+     ],
+     "other_reference_images_1": [
+      "IMAGE",
+      {}
+     ],
+     "other_reference_images_2": [
+      "IMAGE",
+      {}
+     ],
+     "reference_images": [
+      "IMAGE",
+      {}
+     ]
+    },
+    "required": {
+     "clip": [
+      "CLIP",
+      {}
+     ],
+     "denoise": [
+      "FLOAT",
+      {
+       "default": 0.25,
+       "max": 0.6,
+       "min": 0.05,
+       "round": 0.001,
+       "step": 0.01
+      }
+     ],
+     "identity_profile": [
+      "PHOTON_IDENTITY_PROFILE",
+      {}
+     ],
+     "image": [
+      "IMAGE",
+      {}
+     ],
+     "model": [
+      "MODEL",
+      {}
+     ],
+     "report": [
+      "PHOTON_REPORT",
+      {}
+     ],
+     "seed": [
+      "INT",
+      {
+       "control_after_generate": true,
+       "default": 0,
+       "max": 18446744073709551615,
+       "min": 0
+      }
+     ],
+     "size_gate_px": [
+      "INT",
+      {
+       "default": 110,
+       "max": 4096,
+       "min": 16
+      }
+     ],
+     "vae": [
+      "VAE",
+      {}
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "reference_images",
+     "consent_reference_photos",
+     "other_reference_images_1",
+     "other_reference_images_2",
+     "max_faces",
+     "accept_without_references",
+     "character_match_min"
+    ],
+    "required": [
+     "image",
+     "model",
+     "clip",
+     "vae",
+     "report",
+     "identity_profile",
+     "seed",
+     "size_gate_px",
+     "denoise"
+    ]
+   },
+   "output": [
+    "IMAGE",
+    "PHOTON_REPORT",
+    "STRING"
+   ],
+   "output_name": [
+    "image",
+    "report",
+    "summary"
+   ],
+   "output_node": false
+  },
+  "MossPhotonLoRAPhase": {
+   "category": "MossPhoton/1 Setup",
+   "display_name": "Moss Photon LoRA Phase",
+   "input": {
+    "required": {
+     "lora_name": [
+      [
+       "none",
+       "lodestones-8-steps-dmd2-lora.safetensors",
+       "your_character_lora.safetensors",
+       "your_second_lora.safetensors"
+      ],
+      {
+       "default": "none"
+      }
+     ],
+     "model": [
+      "MODEL",
+      {}
+     ],
+     "phase": [
+      [
+       "all",
+       "composition",
+       "identity",
+       "texture",
+       "composition+identity"
+      ],
+      {
+       "default": "identity"
+      }
+     ],
+     "strength": [
+      "FLOAT",
+      {
+       "default": 1.0,
+       "max": 20.0,
+       "min": -20.0,
+       "step": 0.01
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "model",
+     "lora_name",
+     "strength",
+     "phase"
+    ]
+   },
+   "output": [
+    "MODEL"
+   ],
+   "output_name": [
+    "model"
+   ],
+   "output_node": false
+  },
   "MossPhotonLoRAProfile": {
    "category": "MossPhoton/1 Setup",
-   "display_name": "Moss Photon LoRA Profile",
+   "display_name": "Moss Photon LoRA Profile (deprecated)",
    "input": {
     "optional": {
      "a": [
@@ -469,6 +705,51 @@
    ],
    "output_node": false
   },
+  "MossPhotonPromptSplit": {
+   "category": "MossPhoton/1 Setup",
+   "display_name": "Moss Photon Prompt Split",
+   "input": {
+    "required": {
+     "text": [
+      "STRING",
+      {
+       "default": "",
+       "multiline": true
+      }
+     ]
+    }
+   },
+   "input_order": {
+    "required": [
+     "text"
+    ]
+   },
+   "output": [
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING"
+   ],
+   "output_name": [
+    "positive",
+    "negative",
+    "identity",
+    "wardrobe",
+    "scene",
+    "pose",
+    "camera",
+    "lighting",
+    "forbidden_changes",
+    "report"
+   ],
+   "output_node": false
+  },
   "MossPhotonSampler": {
    "category": "MossPhoton/2 Sampling",
    "display_name": "Moss Photon Sampler",
@@ -492,6 +773,14 @@
       "BOOLEAN",
       {
        "default": true
+      }
+     ],
+     "steps": [
+      "INT",
+      {
+       "default": 0,
+       "max": 1000,
+       "min": 0
       }
      ],
      "vae": [
@@ -537,7 +826,9 @@
        "draft_fast",
        "advanced",
        "turbo_8step",
-       "turbo_identity"
+       "turbo_identity",
+       "turbo_darkroom_portrait",
+       "turbo_darkroom_fullbody"
       ],
       {
        "default": "reference"
@@ -560,7 +851,8 @@
      "constraints",
      "vae",
      "preview",
-     "preset_pin"
+     "preset_pin",
+     "steps"
     ],
     "required": [
      "model",
@@ -587,8 +879,51 @@
    "display_name": "Moss Photon Sampler (Advanced)",
    "input": {
     "optional": {
+     "compose_cfg": [
+      "FLOAT",
+      {
+       "default": 0.0,
+       "max": 30.0,
+       "min": 0.0,
+       "round": 0.01,
+       "step": 0.1
+      }
+     ],
+     "compose_slg": [
+      [
+       "from_preset",
+       "off",
+       "on"
+      ],
+      {
+       "default": "from_preset"
+      }
+     ],
      "constraints": [
       "PHOTON_CONSTRAINTS",
+      {}
+     ],
+     "eta": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 1.0,
+       "min": -1.0,
+       "step": 0.05
+      }
+     ],
+     "finish_cfg": [
+      "FLOAT",
+      {
+       "default": 0.0,
+       "max": 30.0,
+       "min": 0.0,
+       "round": 0.01,
+       "step": 0.1
+      }
+     ],
+     "finish_model": [
+      "MODEL",
       {}
      ],
      "identity_profile": [
@@ -607,19 +942,103 @@
        "default": true
       }
      ],
+     "r_c": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 1.0,
+       "min": -1.0,
+       "step": 0.01
+      }
+     ],
+     "r_f": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 1.0,
+       "min": -1.0,
+       "step": 0.01
+      }
+     ],
+     "r_k": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 1.0,
+       "min": -1.0,
+       "step": 0.01
+      }
+     ],
+     "reexpose": [
+      [
+       "from_preset",
+       "off",
+       "on"
+      ],
+      {
+       "default": "from_preset"
+      }
+     ],
      "report_step_times": [
       "BOOLEAN",
       {
        "default": false
       }
      ],
+     "schedule": [
+      [
+       "from_preset",
+       "native",
+       "sa2_8"
+      ],
+      {
+       "default": "from_preset"
+      }
+     ],
+     "sigma_r": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 1.0,
+       "min": -1.0,
+       "step": 0.01
+      }
+     ],
      "sigmas": [
       "SIGMAS",
       {}
      ],
+     "switch_model": [
+      [
+       "from_preset",
+       "off",
+       "on"
+      ],
+      {
+       "default": "from_preset"
+      }
+     ],
      "vae": [
       "VAE",
       {}
+     ],
+     "w_commit": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 10.0,
+       "min": -1.0,
+       "step": 0.05
+      }
+     ],
+     "w_compose": [
+      "FLOAT",
+      {
+       "default": -1.0,
+       "max": 10.0,
+       "min": -1.0,
+       "step": 0.05
+      }
      ]
     },
     "required": {
@@ -695,7 +1114,9 @@
        "draft_fast",
        "advanced",
        "turbo_8step",
-       "turbo_identity"
+       "turbo_identity",
+       "turbo_darkroom_portrait",
+       "turbo_darkroom_fullbody"
       ],
       {
        "default": "reference"
@@ -770,7 +1191,21 @@
      "preview",
      "preset_pin",
      "sigmas",
-     "report_step_times"
+     "report_step_times",
+     "finish_model",
+     "schedule",
+     "compose_cfg",
+     "compose_slg",
+     "r_c",
+     "r_k",
+     "w_compose",
+     "w_commit",
+     "reexpose",
+     "sigma_r",
+     "r_f",
+     "finish_cfg",
+     "eta",
+     "switch_model"
     ],
     "required": [
      "model",

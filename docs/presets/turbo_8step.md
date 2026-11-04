@@ -4,11 +4,11 @@
 
 Status: candidate | Label: candidate | Group: Candidate | Recommended final: no
 
-Preset version 1.0.0, pin `turbo_8step@1.0.0#b6a45fc9`, schema version 1. Catalog summary: 8-step DMD2 turbo: distill LoRA required, CFG 1 (one forward per step), no SLG. Own gate; not a reference.
+Preset version 1.0.0, pin `turbo_8step@1.0.0#751e79e8`, schema version 1. Catalog summary: 8-step DMD2 turbo: distill LoRA required, CFG 1 (one forward per step), no SLG. Own gate; not a reference.
 
 ## Purpose
 
-8-step DMD2 turbo on SFT with the distill LoRA only (owner decision 2026-10-25). A deliberate deviation from SPEC 1 (see DEVIATIONS.md).
+8-step DMD2 turbo on SFT with the distill LoRA only (maintainers' decision 2026-10-25). A deliberate deviation from SPEC 1 (see DEVIATIONS.md).
 
 File description: 8-step DMD2 turbo on MOSS-Image SFT with the distill LoRA only (role distill): Euler, scheduler simple, native shift 5, CFG 1.0, no negative branch, no SLG.
 
@@ -52,21 +52,21 @@ Override bounds (explicit overrides outside the verified range run with a warnin
 
 Always: `model`, `positive`, `negative`, `latent`, `seed`. Then:
 
-- A `MossPhotonLoRAProfile` with role `distill` (strength 1.0), connected to `identity_profile` (missing: error `missing_lora`). Recognised file: `lodestones-8-steps-dmd2-lora` (sha256 `7683fe1f...e6f2`).
+- The distill LoRA, strength 1.0: an ordinary LoRA loader (a merged turbo checkpoint needs none; the preset, not the LoRA, decides that the run is a turbo run), `MossPhotonLoRAPhase`, or the deprecated `MossPhotonLoRAProfile` (role `distill`). A distill role nobody recorded gives the note `lora_not_recorded`, never an error. Recognised file: `lodestones-8-steps-dmd2-lora` (sha256 `7683fe1f...e6f2`).
 - An additional character LoRA gives the warning `preset_lora_roles_exceeded` (use `turbo_identity` for that stack).
 
 Constraints evaluated before sampling (from the preset file):
 
 | Id | Kind | Severity | Reason code | Role / block / input |
 |---|---|---|---|---|
-| `requires_distill_lora` | requires_lora_role | error | missing_lora | distill |
+| `requires_distill_lora` | requires_lora_role | warning | none | distill |
 | `distill_only_stack` | limits_lora_roles | warning | none | distill |
 
 ## Cost in model forwards
 
 - Branches per step: 1 (CFG 1.0 drops the negative branch).
 - Expected forwards for the preset numbers: 8 (= 8 steps x 1).
-- Budget cap in the preset file: 32. Any plan above the cap stops before sampling (`budget_exceeded`).
+- Budget cap in the preset file: 32. A plan above the cap is the warning `forward_budget_exceeded` and the run goes on.
 - Upper corner inside the bounds: 16 steps at CFG above 1.0 = 32 forwards.
 - Time: not estimated in v1 (the report field is empty; DV10).
 
@@ -78,21 +78,22 @@ Constraints evaluated before sampling (from the preset file):
 
 ## Limitations
 
-- Own gate (docs/03-turbo.md 5.6), not run yet (pending MP-12 / calibration). It is not a reference and `recommended_final` is false.
+- Own gate (the maintainers' turbo design), not run yet (pending calibration). It is not a reference and `recommended_final` is false.
 - The DMD2 LoRA was trained on MOSS-Image-Base; its author's card does not cover SFT, so the combination is unproven (info `lora_base_mismatch`).
-- Verified-by-source range is steps 8 and CFG 1.0 to 1.1. Steps 9 to 16 and CFG above 1.1 have no source (owner practice); they run with the warning `turbo_setting_outside_verified`.
-- At CFG 1.0 the negative prompt has no effect (info `negative_unused_cfg1`). SLG is off; an SLG override is refused in the turbo presets (`invalid_override`) and, with the preset `advanced` at CFG 1.0, has no effect (warning `slg_ineffective_cfg1`).
+- Verified-by-source range is steps 8 and CFG 1.0 to 1.1. Steps 9 to 16 and CFG above 1.1 have no source (maintainers' practice); they run with the warning `turbo_setting_outside_verified`.
+- At CFG 1.0 the negative prompt has no effect (info `negative_unused_cfg1`). SLG is off; an SLG override is dropped in the turbo presets and, with the preset `advanced` at CFG 1.0, has no effect (warning `slg_ineffective_cfg1`).
+- A `steps` or `cfg` override outside the bounds runs as given with the warning `override_outside_bounds` (it was `invalid_override`); an SLG override outside the Advanced node is dropped with the warning `setting_adjusted`.
 - `MOSS_Image_SFT_8_steps_dmd_v0.1` is a different distillation and is refused (`incompatible_lora`). An unknown distill file runs with `unverified_distill_lora`.
 - The fp32 delta is merged into the bf16 weights by ComfyUI's loader (the cards warn about that); the merge fidelity is not studied in v1.
 
 ## A/B report
 
-Pending MP-12 / calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
+Pending calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
 
 ### Examples of successes
 
-pending MP-12 / calibration.
+pending calibration.
 
 ### Examples of failures and worst cases
 
-pending MP-12 / calibration.
+pending calibration.

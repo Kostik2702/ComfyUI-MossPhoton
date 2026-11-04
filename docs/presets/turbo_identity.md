@@ -4,11 +4,11 @@
 
 Status: candidate | Label: candidate | Group: Candidate | Recommended final: no
 
-Preset version 1.0.0, pin `turbo_identity@1.0.0#3effb94d`, schema version 1. Catalog summary: 8-step DMD2 turbo plus a character LoRA: both LoRAs required, order distill then character. Identity under distill is unmeasured.
+Preset version 1.0.0, pin `turbo_identity@1.0.0#8fd885b0`, schema version 1. Catalog summary: 8-step DMD2 turbo plus a character LoRA: both LoRAs required, order distill then character. Identity under distill is unmeasured.
 
 ## Purpose
 
-The 8-step DMD2 turbo stacked with a character LoRA (owner decision 2026-10-25). Order: distill first, then the character LoRA.
+The 8-step DMD2 turbo stacked with a character LoRA (maintainers' decision 2026-10-25). Order: distill first, then the character LoRA.
 
 File description: 8-step DMD2 turbo on MOSS-Image SFT stacked with a character LoRA: distill LoRA (role distill) first, then the character LoRA (role character). Same sampling as turbo_8step.
 
@@ -52,15 +52,15 @@ Override bounds (explicit overrides outside the verified range run with a warnin
 
 Always: `model`, `positive`, `negative`, `latent`, `seed`. Then:
 
-- Two chained `MossPhotonLoRAProfile` nodes: role `distill` (strength 1.0) first, role `character` second (`profile_in` from the first). Either one missing: error `missing_lora`.
+- The distill LoRA (strength 1.0) first, then the character LoRA: ordinary LoRA loaders chained by their MODEL sockets, `MossPhotonLoRAPhase` nodes, or the deprecated `MossPhotonLoRAProfile` chain (role `distill`, role `character`, `profile_in` from the first). A role nobody recorded gives the note `lora_not_recorded`, never an error.
 - Optional: reference photos at the Diagnostics node (info only).
 
 Constraints evaluated before sampling (from the preset file):
 
 | Id | Kind | Severity | Reason code | Role / block / input |
 |---|---|---|---|---|
-| `requires_distill_lora` | requires_lora_role | error | missing_lora | distill |
-| `requires_character_lora` | requires_lora_role | error | missing_lora | character |
+| `requires_distill_lora` | requires_lora_role | warning | none | distill |
+| `requires_character_lora` | requires_lora_role | warning | none | character |
 | `recommends_reference_photos` | recommends_input | info | none | reference_photos |
 
 Guards declared by the preset (none of them runs in v1):
@@ -73,7 +73,7 @@ Guards declared by the preset (none of them runs in v1):
 
 - Branches per step: 1 (CFG 1.0 drops the negative branch).
 - Expected forwards for the preset numbers: 8 (= 8 steps x 1).
-- Budget cap in the preset file: 32. Any plan above the cap stops before sampling (`budget_exceeded`).
+- Budget cap in the preset file: 32. A plan above the cap is the warning `forward_budget_exceeded` and the run goes on.
 - Upper corner inside the bounds: 16 steps at CFG above 1.0 = 32 forwards.
 - Time: not estimated in v1 (the report field is empty; DV10).
 
@@ -85,19 +85,19 @@ Guards declared by the preset (none of them runs in v1):
 
 ## Limitations
 
-- Own gate (docs/03-turbo.md 5.6), not run yet (pending MP-12 / calibration); `recommended_final` is false.
+- Own gate (the maintainers' turbo design), not run yet (pending calibration); `recommended_final` is false.
 - Identity under the distill LoRA is unmeasured and no identity score exists in v1. The character strength comes from the LoRA profile; no verified value exists.
 - The order of the two LoRAs changes the result in the last bits and is recorded in the report.
 - The same unproven points as turbo_8step: DMD2 on SFT, steps 9 to 16, CFG above 1.1.
 
 ## A/B report
 
-Pending MP-12 / calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
+Pending calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
 
 ### Examples of successes
 
-pending MP-12 / calibration.
+pending calibration.
 
 ### Examples of failures and worst cases
 
-pending MP-12 / calibration.
+pending calibration.

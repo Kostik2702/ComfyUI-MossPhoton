@@ -75,35 +75,54 @@ class LayerTest(unittest.TestCase):
         self.assertEqual([type(x) for x in r.effective["sampling"]["slg_layers"]], [int, int])
         self.assertIs(type(r.effective["sampling"]["cfg"]), float)
 
-    def test_override_bounds(self):
-        bad = [{"steps": 0}, {"steps": 1001}, {"steps": 50.5}, {"steps": True}, {"steps": "50"}, {"cfg": 0.5},
-               {"cfg": 31}, {"cfg": True}, {"shift": 0}, {"slg_mode": "wild"}, {"slg_layers": [22, 22]},
-               {"slg_layers": [-1]}, {"slg_layers": 22}, {"slg_start": 1.5}, {"slg_end": -0.5}]
+    def test_override_of_the_wrong_type_is_refused(self):
+        """What only an API caller can pass (a widget has a type): still ``invalid_override``, naming the setting."""
+        bad = [{"steps": 50.5}, {"steps": True}, {"steps": "50"}, {"cfg": True}, {"cfg": "3"}, {"shift": 0},
+               {"slg_mode": "wild"}, {"slg_layers": 22}, {"slg_layers": ["a"]}, {"slg_start": "0"}]
         for ov in bad:
             with self.assertRaises(errors.InvalidOverride, msg=str(ov)) as cm:
                 presets.resolve("reference", overrides=ov)
             self.assertEqual(cm.exception.code, "invalid_override")
             self.assertEqual(cm.exception.issue.param, next(iter(ov)))
 
-    def test_slg_start_gt_end(self):
-        with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("reference", overrides={"slg_start": 0.8, "slg_end": 0.2})
-        self.assertEqual(cm.exception.issue.param, "slg_start")
-        with self.assertRaises(errors.InvalidOverride):
-            presets.resolve("reference", overrides={"slg_start": 0.5, "slg_end": 0.4})
-        self.assertFalse(presets.resolve("reference", overrides={"slg_start": 0.5, "slg_end": 0.5}).effective is None)
+    def test_override_outside_what_the_engine_can_run_is_moved_with_a_warning(self):
+        """MP-84 (owner 2026-11-02): a setting conflict degrades; the value used is the nearest one the engine can run."""
+        for ov, name, used in (({"steps": 0}, "steps", 1), ({"steps": 1001}, "steps", 1000), ({"cfg": 0.5}, "cfg", 1.0),
+                               ({"cfg": 31}, "cfg", 30.0), ({"cfg": 0}, "cfg", 1.0), ({"slg_start": 1.5}, "slg_start", 1.0),
+                               ({"slg_end": -0.5}, "slg_end", 0.0)):
+            with self.subTest(ov=ov):
+                r = presets.resolve("reference", overrides=ov)
+                self.assertEqual(r.effective["sampling"][name], used)
+                adjusted = [w for w in r.warnings if w.code == "setting_adjusted"]
+                self.assertEqual([w.param for w in adjusted][:1], [name])
+                self.assertTrue(r.customized)
 
-    def test_slg_mode_needs_layers(self):
-        with self.assertRaises(errors.InvalidOverride):
-            presets.resolve("reference", overrides={"slg_layers": []})
+    def test_slg_start_gt_end_is_swapped(self):
+        r = presets.resolve("reference", overrides={"slg_start": 0.8, "slg_end": 0.2})
+        self.assertEqual((r.effective["sampling"]["slg_start"], r.effective["sampling"]["slg_end"]), (0.2, 0.8))
+        self.assertIn("setting_adjusted", codes(r))
+        r = presets.resolve("reference", overrides={"slg_start": 0.5, "slg_end": 0.4})
+        self.assertEqual((r.effective["sampling"]["slg_start"], r.effective["sampling"]["slg_end"]), (0.4, 0.5))
+        r = presets.resolve("reference", overrides={"slg_start": 0.5, "slg_end": 0.5})
+        self.assertNotIn("setting_adjusted", codes(r))
+
+    def test_slg_mode_without_layers_becomes_off(self):
+        r = presets.resolve("reference", overrides={"slg_layers": []})
+        self.assertEqual((r.effective["sampling"]["slg_mode"], r.effective["sampling"]["slg_layers"]), ("off", []))
+        self.assertIn("setting_adjusted", codes(r))
         r = presets.resolve("reference", overrides={"slg_mode": "off", "slg_layers": []})
         self.assertTrue(r.customized)
+        self.assertNotIn("setting_adjusted", codes(r))
 
-    def test_layer_ge_num_layers(self):
-        with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("reference", overrides={"slg_layers": [42]}, num_layers=42)
-        self.assertEqual(cm.exception.issue.param, "slg_layers")
-        presets.resolve("reference", overrides={"slg_layers": [41]}, num_layers=42)
+    def test_layers_the_model_does_not_have_are_dropped(self):
+        r = presets.resolve("reference", overrides={"slg_layers": [42]}, num_layers=42)
+        self.assertEqual((r.effective["sampling"]["slg_mode"], r.effective["sampling"]["slg_layers"]), ("off", []))
+        self.assertEqual([w.param for w in r.warnings if w.code == "setting_adjusted"], ["slg_layers", "slg_mode"])
+        r = presets.resolve("reference", overrides={"slg_layers": [3, 41, 42, 3]}, num_layers=42)
+        self.assertEqual(r.effective["sampling"]["slg_layers"], [3, 41])
+        self.assertEqual(r.effective["sampling"]["slg_mode"], "uncond_skip")
+        self.assertNotIn("setting_adjusted", codes(presets.resolve("reference", overrides={"slg_layers": [41]},
+                                                                  num_layers=42)))
         presets.resolve("reference", overrides={"slg_layers": [200]})   # model unknown: schema bound only
 
     def test_presets_never_touch_text_seed_size_source_lora_checkpoint(self):
@@ -271,17 +290,47 @@ class PinTest(unittest.TestCase):
             self.assertNotIn("preset_unpinned", codes(r))
             self.assertEqual(r.pin, "reference@1.0.0#" + self.sha8)
 
-    def test_pin_mismatch_id_version_sha8(self):
+    def test_pin_mismatch_id_version_sha8_runs_the_installed_preset_with_a_warning(self):
+        """MP-84: a pin is advisory. It was ``preset_version_mismatch``; the installed preset runs, the warning names both."""
         for pin, field in (("photo_safe@1.0.0", "id"), ("reference@1.0.1", "version"), ("reference@2.0.0", "version"),
-                           ("reference@1.0.0#00000000", "sha8"), ("reference@1.0", "malformed")):
-            with self.assertRaises(errors.PresetVersionMismatch, msg=pin) as cm:
-                presets.resolve("reference", pin=pin)
-            issue = cm.exception.issue
-            self.assertEqual((issue.code, issue.param), ("preset_version_mismatch", "preset_pin"))
-            self.assertIn("preset_pin", issue.fix)
-            if field != "malformed":
-                self.assertIn(field, issue.message)
+                           ("reference@1.0.1#00000000", "version"), ("reference@1.0", "malformed")):
+            with self.subTest(pin=pin):
+                r = presets.resolve("reference", pin=pin)
+                self.assertEqual(r.preset["id"], "reference", "the installed preset runs")
+                self.assertFalse(r.pinned)
+                self.assertEqual(r.pin, "reference@1.0.0#" + self.sha8)
+                self.assertEqual(codes(r), ["preset_pin_mismatch"])
+                issue = r.warnings[0]
+                self.assertEqual((issue.severity, issue.param), ("warning", "preset_pin"))
+                self.assertIn("preset_pin", issue.fix)
                 self.assertIn("reference@1.0.0#" + self.sha8, issue.message)
+                if field != "malformed":
+                    self.assertIn(field, issue.message)
+
+    def test_pin_with_same_version_and_other_sha8_runs_the_installed_preset_with_a_warning(self):
+        """MP-76: only the content changed, the version did not: the installed entry runs, the warning names both pins."""
+        stale = "reference@1.0.0#00000000"
+        r = presets.resolve("reference", pin=stale)
+        installed = "reference@1.0.0#" + self.sha8
+        self.assertEqual(r.pin, installed)
+        self.assertTrue(r.pinned)
+        self.assertEqual(r.preset_sha256, presets.preset_sha256(presets.catalog()["reference"]))
+        self.assertEqual(codes(r), ["preset_changed_same_version"])
+        w = r.warnings[0]
+        self.assertEqual((w.severity, w.param), ("warning", "preset_pin"))
+        for needle in (stale, installed, "results may differ", "CHANGELOG"):
+            self.assertIn(needle, w.message)
+        self.assertIn(installed, w.fix)
+        self.assertEqual(w.detail, {"workflow_pin": stale, "installed_pin": installed})
+
+    def test_matching_pin_gives_no_changed_warning(self):
+        for pin in ("reference@1.0.0", "reference@1.0.0#" + self.sha8):
+            self.assertEqual(codes(presets.resolve("reference", pin=pin)), [])
+
+    def test_other_version_with_other_sha8_is_a_pin_mismatch_warning(self):
+        for pin in ("reference@1.0.1#00000000", "reference@0.9.0#00000000", "photo_safe@1.0.0#00000000"):
+            with self.subTest(pin=pin):
+                self.assertEqual(codes(presets.resolve("reference", pin=pin)), ["preset_pin_mismatch"])
 
     def test_empty_pin_warns_unpinned(self):
         r = presets.resolve("reference", pin="")
@@ -338,7 +387,10 @@ class EffectiveViewTest(unittest.TestCase):
         with self.assertRaises(errors.UnknownPreset):
             presets.effective_view("nope")
         with self.assertRaises(errors.InvalidOverride):
-            presets.effective_view("reference", {"cfg": 0})
+            presets.effective_view("reference", {"cfg": True})
+        view = presets.effective_view("reference", {"cfg": 0})   # MP-84: moved to 1.0, with a warning
+        self.assertEqual(view["effective"]["sampling"]["cfg"], 1.0)
+        self.assertIn("setting_adjusted", [w["code"] for w in view["warnings"]])
 
     def test_branches_agree_with_sigma_when_it_exists(self):
         if importlib.util.find_spec("moss_photon.core.sigma") is None:

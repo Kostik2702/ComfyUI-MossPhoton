@@ -10,7 +10,7 @@ from . import errors
 
 __all__ = [
     "SLG_MODES", "SKIP_BLOCK_NAME", "parse_layers", "validate_slg", "slg_sigma_window", "has_external_cond_hook",
-    "apply_slg", "describe_slg",
+    "apply_slg", "cond_hook_slot", "restore_cond_hook_slot", "describe_slg",
 ]
 
 SLG_MODES = ("off", "uncond_skip")
@@ -98,8 +98,13 @@ def has_external_cond_hook(model):
     return bool((getattr(model, "model_options", None) or {}).get("sampler_calc_cond_batch_function"))
 
 
-def apply_slg(model, *, layers, start, end):
+def apply_slg(model, *, layers, start, end, in_place=False):
     """A CLONE of ``model`` whose unconditional pass skips ``layers``; the original is untouched (D3).
+
+    ``in_place=True``: ``model`` itself gets the closure and is returned, for a clone the caller owns and samples from. A
+    clone of that clone would be a patcher whose parent is a throwaway, and a ``LoadedModel`` left on such a patcher is dead
+    for good once both are collected together (MP-82 / MP-88; ``core/lora_phase.py``): the sampling patcher must be a DIRECT
+    clone of the incoming MODEL.
 
     With no layers the input object itself is returned (nothing to install). Otherwise the clone gets the native
     uncond-only closure: inside ``sigma_end <= sigma <= sigma_start`` and when an unconditional branch exists
@@ -136,9 +141,23 @@ def apply_slg(model, *, layers, start, end):
             return [cond_out, uncond_out]
         return comfy.samplers.calc_cond_batch(net, conds, x, sigma, model_options)
 
-    clone = model.clone()
+    clone = model if in_place else model.clone()
     clone.set_model_sampler_calc_cond_batch_function(calc_cond_batch_function)
     return clone
+
+
+def cond_hook_slot(model):
+    """What ``model`` holds in the single ``sampler_calc_cond_batch_function`` slot (``None`` when empty). With
+    ``restore_cond_hook_slot`` it undoes an ``apply_slg(..., in_place=True)`` on a clone that is used again afterwards."""
+    return (getattr(model, "model_options", None) or {}).get("sampler_calc_cond_batch_function")
+
+
+def restore_cond_hook_slot(model, value):
+    """Put ``value`` (from ``cond_hook_slot``) back into the slot; an empty slot is removed, not set to ``None``."""
+    if value is None:
+        model.model_options.pop("sampler_calc_cond_batch_function", None)
+    else:
+        model.set_model_sampler_calc_cond_batch_function(value)
 
 
 def describe_slg(mode, layers, start, end, window):

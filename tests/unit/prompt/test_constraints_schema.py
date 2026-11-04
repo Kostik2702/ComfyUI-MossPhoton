@@ -44,15 +44,14 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(errors(built), [])
         self.assertEqual(set(built), set(FIXTURE))
         for key in FIXTURE:
-            if key in ("prompt_sha256", "text_encoder"):  # fixture carries placeholders / an example TE
+            if key == "text_encoder":  # the fixture carries an example text encoder
                 continue
             with self.subTest(key=key):
                 self.assertEqual(built[key], FIXTURE[key])
 
-    def test_fixture_passes_validate_constraints_except_its_placeholder_hashes(self):
-        problems = c.validate_constraints(FIXTURE)
-        self.assertEqual(sorted(problems), ["prompt_sha256.negative does not match negative_text",
-                                            "prompt_sha256.positive does not match compiled_positive"])
+    def test_fixture_passes_validate_constraints(self):
+        """MP-60: the sampler validates the constraints it receives, so the fixture carries real prompt hashes."""
+        self.assertEqual(c.validate_constraints(FIXTURE), [])
 
     def test_built_object_passes_validate_constraints(self):
         self.assertEqual(c.validate_constraints(build()), [])
@@ -144,6 +143,11 @@ class ValidatorTest(unittest.TestCase):
             "hash stale": lambda b: b["prompt_sha256"].update(positive="0" * 64),
             "layout wrong space": lambda b: b.update(layout={"items": 0, "bboxes": [], "extent": [0, 0, 0, 0],
                                                              "bbox_coord_space": "x", "bbox_format": "yxyx"}),
+            "conditioning key missing": lambda b: b.pop("conditioning"),
+            "conditioning not an object": lambda b: b.update(conditioning="abc"),
+            "conditioning lacks the negative hash": lambda b: b.update(conditioning={"positive_sha256": "a" * 64}),
+            "conditioning hash is not sha256": lambda b: b.update(
+                conditioning={"positive_sha256": "a" * 64, "negative_sha256": "nope"}),
             "layout items mismatch": lambda b: b.update(layout={"items": 3, "bboxes": [], "extent": [0, 0, 0, 0],
                                                                 "bbox_coord_space": "abs_centralized",
                                                                 "bbox_format": "yxyx"}),

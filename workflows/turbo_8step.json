@@ -2,7 +2,7 @@
  "id": "40a84cb8-0c21-5fa1-b8ab-1fe5d917deb2",
  "revision": 0,
  "last_node_id": 11,
- "last_link_id": 15,
+ "last_link_id": 14,
  "nodes": [
   {
    "id": 1,
@@ -143,7 +143,7 @@
      "type": "VAE",
      "links": [
       8,
-      11
+      10
      ],
      "slot_index": 0
     }
@@ -368,14 +368,14 @@
   },
   {
    "id": 6,
-   "type": "MossPhotonLoRAProfile",
+   "type": "LoraLoaderModelOnly",
    "pos": [
     420,
     540
    ],
    "size": [
     420,
-    360
+    130
    ],
    "flags": {},
    "order": 5,
@@ -401,147 +401,24 @@
       "name": "strength_model"
      },
      "link": null
-    },
-    {
-     "name": "role",
-     "type": "COMBO",
-     "widget": {
-      "name": "role"
-     },
-     "link": null
-    },
-    {
-     "name": "profile",
-     "type": "COMBO",
-     "widget": {
-      "name": "profile"
-     },
-     "link": null
-    },
-    {
-     "name": "trigger",
-     "type": "STRING",
-     "widget": {
-      "name": "trigger"
-     },
-     "link": null
-    },
-    {
-     "name": "profile_in",
-     "type": "PHOTON_IDENTITY_PROFILE",
-     "link": null
-    },
-    {
-     "name": "clip",
-     "type": "CLIP",
-     "link": null
-    },
-    {
-     "name": "apply_text_encoder",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "apply_text_encoder"
-     },
-     "link": null
-    },
-    {
-     "name": "strength_clip",
-     "type": "FLOAT",
-     "widget": {
-      "name": "strength_clip"
-     },
-     "link": null
-    },
-    {
-     "name": "allow_low_coverage",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "allow_low_coverage"
-     },
-     "link": null
-    },
-    {
-     "name": "fingerprint",
-     "type": "COMBO",
-     "widget": {
-      "name": "fingerprint"
-     },
-     "link": null
-    },
-    {
-     "name": "w0",
-     "type": "FLOAT",
-     "widget": {
-      "name": "w0"
-     },
-     "link": null
-    },
-    {
-     "name": "w1",
-     "type": "FLOAT",
-     "widget": {
-      "name": "w1"
-     },
-     "link": null
-    },
-    {
-     "name": "a",
-     "type": "FLOAT",
-     "widget": {
-      "name": "a"
-     },
-     "link": null
-    },
-    {
-     "name": "b",
-     "type": "FLOAT",
-     "widget": {
-      "name": "b"
-     },
-     "link": null
     }
    ],
    "outputs": [
     {
-     "name": "model",
+     "name": "MODEL",
      "type": "MODEL",
      "links": [
       3
      ],
      "slot_index": 0
-    },
-    {
-     "name": "identity_profile",
-     "type": "PHOTON_IDENTITY_PROFILE",
-     "links": [
-      9
-     ],
-     "slot_index": 1
-    },
-    {
-     "name": "clip",
-     "type": "CLIP",
-     "links": null,
-     "slot_index": 2
     }
    ],
    "properties": {
-    "Node name for S&R": "MossPhotonLoRAProfile"
+    "Node name for S&R": "LoraLoaderModelOnly"
    },
    "widgets_values": [
     "lodestones-8-steps-dmd2-lora.safetensors",
-    1.0,
-    "distill",
-    "constant",
-    "",
-    false,
-    0.0,
-    false,
-    "cached_or_compute",
-    0.3,
-    0.9,
-    0.2,
-    0.6
+    1.0
    ]
   },
   {
@@ -606,7 +483,7 @@
     {
      "name": "identity_profile",
      "type": "PHOTON_IDENTITY_PROFILE",
-     "link": 9
+     "link": null
     },
     {
      "name": "constraints",
@@ -633,6 +510,14 @@
       "name": "preset_pin"
      },
      "link": null
+    },
+    {
+     "name": "steps",
+     "type": "INT",
+     "widget": {
+      "name": "steps"
+     },
+     "link": null
     }
    ],
    "outputs": [
@@ -640,7 +525,7 @@
      "name": "latent",
      "type": "LATENT",
      "links": [
-      10
+      9
      ],
      "slot_index": 0
     },
@@ -648,7 +533,7 @@
      "name": "report",
      "type": "PHOTON_REPORT",
      "links": [
-      12
+      11
      ],
      "slot_index": 1
     }
@@ -662,7 +547,8 @@
     "turbo_8step",
     0.0,
     true,
-    "turbo_8step@1.0.0#b6a45fc9"
+    "turbo_8step@1.0.0#751e79e8",
+    0
    ]
   },
   {
@@ -683,12 +569,12 @@
     {
      "name": "samples",
      "type": "LATENT",
-     "link": 10
+     "link": 9
     },
     {
      "name": "vae",
      "type": "VAE",
-     "link": 11
+     "link": 10
     }
    ],
    "outputs": [
@@ -696,8 +582,8 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      13,
-      14
+      12,
+      13
      ],
      "slot_index": 0
     }
@@ -725,12 +611,12 @@
     {
      "name": "report",
      "type": "PHOTON_REPORT",
-     "link": 12
+     "link": 11
     },
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 13
+     "link": 12
     },
     {
      "name": "reference_images",
@@ -756,7 +642,7 @@
      "name": "report",
      "type": "PHOTON_REPORT",
      "links": [
-      15
+      14
      ],
      "slot_index": 0
     },
@@ -792,12 +678,12 @@
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 14
+     "link": 13
     },
     {
      "name": "report",
      "type": "PHOTON_REPORT",
-     "link": 15
+     "link": 14
     },
     {
      "name": "filename_prefix",
@@ -870,7 +756,7 @@
    "outputs": [],
    "properties": {},
    "widgets_values": [
-    "ComfyUI 0.42.0 (commit 8f04fd6ec), web frontend 1.55.18, ComfyUI-MossPhoton 0.1.0.\n\nWorkflow: SFT -> Moss Photon LoRA Profile (role distill, strength 1.0) -> Sampler preset turbo_8step.\n\nWeights (the workflow downloads nothing: download the files yourself and put them in these folders):\n- models/diffusion_models/moss_image_sft_bf16.safetensors (the official MOSS-Image-SFT bf16 file)\n- models/text_encoders/qwen3.5_9b_bf16.safetensors (the official Qwen3.5 9B bf16 text encoder of MOSS-Image; CLIPLoader type moss_image)\n- models/vae/flux2-vae.safetensors (Flux 2 VAE)\n- models/loras/lodestones-8-steps-dmd2-lora.safetensors (the public lodestones 8-step DMD2 LoRA, sha256 7683fe1f...e6f2; download it and keep this file name)\n\nPreset: turbo_8step, catalog status 'candidate' with its OWN gate, which has not been run (MP-12 pending). 8 Euler steps, scheduler simple, shift 5, CFG 1 (one forward per step, the negative prompt is not evaluated), SLG off. It is not a reference and not recommended as a final preset.\n\nUnproven: the DMD2 LoRA was trained on MOSS-Image-Base by its author; its use on SFT is not covered by the author's card. Steps 9-16 and CFG above 1.1 have no source in the author's cards; the preset bounds are steps 8-16 and CFG 1-2, and a value beyond 8 steps / CFG 1.1 runs with a warning. Quality of the turbo path is unmeasured.\n\nExperimental features: the whole turbo path is experimental (candidate preset, gate not run). Steps 9-16 and CFG above 1.1 are NOT switched on in this graph.\n\nMOSS_Image_SFT_8_steps_dmd_v0.1 is a different distillation and is refused (incompatible_lora).\n\nScope: SFT only. Base: not verified in v1 (recognised by hash, no parity or gate run). Calibration stages B-D are not done. If a loader shows 'value not in list', the file is named or placed differently on your machine: open the combo and pick your file. A file in a subfolder of a models folder is listed with a backslash on Windows and a forward slash on Linux."
+    "ComfyUI 0.42.0 (commit 8f04fd6ec), web frontend 1.55.18, ComfyUI-MossPhoton 0.1.0.\n\nWorkflow: SFT -> LoraLoaderModelOnly (the DMD2 distill LoRA, strength 1.0) -> Sampler preset turbo_8step. The preset, not the LoRA, decides that the run is a turbo run: a merged turbo checkpoint works with the same preset and no loader.\n\nWeights (the workflow downloads nothing: download the files yourself and put them in these folders):\n- models/diffusion_models/moss_image_sft_bf16.safetensors (the official MOSS-Image-SFT bf16 file)\n- models/text_encoders/qwen3.5_9b_bf16.safetensors (the official Qwen3.5 9B bf16 text encoder of MOSS-Image; CLIPLoader type moss_image)\n- models/vae/flux2-vae.safetensors (Flux 2 VAE)\n- models/loras/lodestones-8-steps-dmd2-lora.safetensors (the public lodestones 8-step DMD2 LoRA, sha256 7683fe1f...e6f2; download it and keep this file name)\n\nPreset: turbo_8step, catalog status 'candidate' with its OWN gate, which has not been run. 8 Euler steps, scheduler simple, shift 5, CFG 1 (one forward per step, the negative prompt is not evaluated), SLG off. It is not a reference and not recommended as a final preset.\n\nUnproven: the DMD2 LoRA was trained on MOSS-Image-Base by its author; its use on SFT is not covered by the author's card. Steps 9-16 and CFG above 1.1 have no source in the author's cards; the preset bounds are steps 8-16 and CFG 1-2, and a value beyond 8 steps / CFG 1.1 runs with a warning. Quality of the turbo path is unmeasured.\n\nExperimental features: the whole turbo path is experimental (candidate preset, gate not run). Steps 9-16 and CFG above 1.1 are NOT switched on in this graph.\n\nMOSS_Image_SFT_8_steps_dmd_v0.1 is a different distillation and is refused (incompatible_lora).\n\nScope: SFT only. Base: not verified in v1 (recognised by hash, no parity or gate run). Calibration stages B-D are not done. If a loader shows 'value not in list', the file is named or placed differently on your machine: open the combo and pick your file. A file in a subfolder of a models folder is listed with a backslash on Windows and a forward slash on Linux."
    ],
    "title": "MossPhoton turbo_8step: versions, weights, status (candidate)",
    "color": "#432",
@@ -944,14 +830,6 @@
   ],
   [
    9,
-   6,
-   1,
-   7,
-   7,
-   "PHOTON_IDENTITY_PROFILE"
-  ],
-  [
-   10,
    7,
    0,
    8,
@@ -959,7 +837,7 @@
    "LATENT"
   ],
   [
-   11,
+   10,
    3,
    0,
    8,
@@ -967,7 +845,7 @@
    "VAE"
   ],
   [
-   12,
+   11,
    7,
    1,
    9,
@@ -975,7 +853,7 @@
    "PHOTON_REPORT"
   ],
   [
-   13,
+   12,
    8,
    0,
    9,
@@ -983,7 +861,7 @@
    "IMAGE"
   ],
   [
-   14,
+   13,
    8,
    0,
    10,
@@ -991,7 +869,7 @@
    "IMAGE"
   ],
   [
-   15,
+   14,
    9,
    0,
    10,

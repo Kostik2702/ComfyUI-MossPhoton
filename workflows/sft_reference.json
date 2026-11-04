@@ -455,6 +455,14 @@
       "name": "preset_pin"
      },
      "link": null
+    },
+    {
+     "name": "steps",
+     "type": "INT",
+     "widget": {
+      "name": "steps"
+     },
+     "link": null
     }
    ],
    "outputs": [
@@ -484,7 +492,8 @@
     "reference",
     0.0,
     true,
-    "reference@1.0.0#1936562e"
+    "reference@1.0.0#1936562e",
+    0
    ]
   },
   {
@@ -692,7 +701,7 @@
    "outputs": [],
    "properties": {},
    "widgets_values": [
-    "ComfyUI 0.42.0 (commit 8f04fd6ec), web frontend 1.55.18, ComfyUI-MossPhoton 0.1.0.\n\nWorkflow: native loaders -> Moss Photon Prompt Layout -> Moss Photon Sampler (preset reference) -> VAE Decode -> Diagnostics -> Moss Photon Save Image.\n\nWeights (the workflow downloads nothing: download the files yourself and put them in these folders):\n- models/diffusion_models/moss_image_sft_bf16.safetensors (the official MOSS-Image-SFT bf16 file)\n- models/text_encoders/qwen3.5_9b_bf16.safetensors (the official Qwen3.5 9B bf16 text encoder of MOSS-Image; CLIPLoader type moss_image)\n- models/vae/flux2-vae.safetensors (Flux 2 VAE)\n\nPreset: reference. Catalog status 'stable' means: the baseline recipe of SPEC 6.1 (50 Euler steps, sgm_uniform, native shift 5, CFG 3, negative-branch skip of layer 22). Its parity gate against the native ComfyUI graph has not been run on a GPU yet (MP-12 pending). cfg 0.0 = take the value of the preset.\n\nExperimental in this pack: layout_json of the Prompt Layout node, apply_text_encoder of the LoRA Profile, the Advanced sampler. None of them is used here.\n\nScope: SFT only. Base: not verified in v1 (recognised by hash, no parity or gate run). Calibration stages B-D are not done. If a loader shows 'value not in list', the file is named or placed differently on your machine: open the combo and pick your file. A file in a subfolder of a models folder is listed with a backslash on Windows and a forward slash on Linux."
+    "ComfyUI 0.42.0 (commit 8f04fd6ec), web frontend 1.55.18, ComfyUI-MossPhoton 0.1.0.\n\nWorkflow: native loaders -> Moss Photon Prompt Layout -> Moss Photon Sampler (preset reference) -> VAE Decode -> Diagnostics -> Moss Photon Save Image.\n\nWeights (the workflow downloads nothing: download the files yourself and put them in these folders):\n- models/diffusion_models/moss_image_sft_bf16.safetensors (the official MOSS-Image-SFT bf16 file)\n- models/text_encoders/qwen3.5_9b_bf16.safetensors (the official Qwen3.5 9B bf16 text encoder of MOSS-Image; CLIPLoader type moss_image)\n- models/vae/flux2-vae.safetensors (Flux 2 VAE)\n\nPreset: reference. Catalog status 'stable' means: the baseline recipe of SPEC 6.1 (50 Euler steps, sgm_uniform, native shift 5, CFG 3, negative-branch skip of layer 22). Its parity gate against the native ComfyUI graph has not been run on a GPU yet. cfg 0.0 = take the value of the preset.\n\nExperimental in this pack: layout_json of the Prompt Layout node, apply_text_encoder of the LoRA Profile, the Advanced sampler. None of them is used here.\n\nScope: SFT only. Base: not verified in v1 (recognised by hash, no parity or gate run). Calibration stages B-D are not done. If a loader shows 'value not in list', the file is named or placed differently on your machine: open the combo and pick your file. A file in a subfolder of a models folder is listed with a backslash on Windows and a forward slash on Linux."
    ],
    "title": "MossPhoton sft_reference: versions, weights, status",
    "color": "#432",

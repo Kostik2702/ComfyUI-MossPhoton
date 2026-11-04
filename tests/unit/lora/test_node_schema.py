@@ -77,7 +77,8 @@ class InputTypesTest(unittest.TestCase):
         self.assertEqual((cls.FUNCTION, cls.CATEGORY), ("apply", consts.CAT_SETUP))
         self.assertTrue(cls.DESCRIPTION)
         self.assertEqual(node.NODE_CLASS_MAPPINGS, {"MossPhotonLoRAProfile": cls})
-        self.assertEqual(node.NODE_DISPLAY_NAME_MAPPINGS, {"MossPhotonLoRAProfile": "Moss Photon LoRA Profile"})
+        self.assertEqual(node.NODE_DISPLAY_NAME_MAPPINGS, {"MossPhotonLoRAProfile": "Moss Photon LoRA Profile (deprecated)"})
+        self.assertIs(node.MossPhotonLoRAProfile.DEPRECATED, True)  # MP-84: kept for old graphs, marked deprecated
         self.assertIn("MossPhotonLoRAProfile", consts.NODE_IDS)
 
 
@@ -150,13 +151,24 @@ class RefusalsTest(unittest.TestCase):
         with self.assertRaises(errors.UnsupportedFeature):
             self.apply(lora_name="none", profile="ramp")
 
-    def test_a_bad_phase_plan_is_refused_before_anything_else(self):
-        for kw in ({"w0": float("nan")}, {"w1": 11.0}, {"a": 0.6, "b": 0.2}, {"a": 0.3, "b": 0.3}, {"a": -0.1},
-                   {"b": 1.5}):
+    def test_a_phase_value_outside_its_widget_range_is_refused_before_anything_else(self):
+        """Only an API caller can send these (the widgets clamp them); a window with a >= b is a setting conflict (MP-73)."""
+        for kw in ({"w0": float("nan")}, {"w1": 11.0}, {"a": -0.1}, {"b": 1.5}):
             with self.subTest(kw=kw):
                 with self.assertRaises(errors.UnsupportedFeature) as ctx:
                     self.apply(profile="phased", **kw)
                 self.assertEqual(ctx.exception.issue.detail["feature"], "phase_plan")
+
+    def test_a_window_with_a_not_below_b_does_not_raise(self):
+        """MP-73: degrades to a constant weight with a warning (the full path is in tests/integration/test_lora_chain_traps_tiny.py);
+        here the node has no file, so it passes through without the plan check raising."""
+        model = FakeModel()
+        for kw in ({"a": 0.6, "b": 0.2}, {"a": 0.3, "b": 0.3}):
+            with self.subTest(kw=kw):
+                out, profile, _c = node.MossPhotonLoRAProfile().apply(
+                    model, lora_name="none", strength_model=1.0, role="character", profile="phased", **kw)
+                self.assertIs(out, model)
+                self.assertEqual((profile["stack"], profile["phase_plan"]), ([], None))
 
     def test_a_phased_pass_through_when_both_weights_are_zero_or_there_is_no_file(self):
         model = FakeModel()
@@ -167,10 +179,14 @@ class RefusalsTest(unittest.TestCase):
                 self.assertIs(out, model)
                 self.assertEqual((profile["stack"], profile["phase_plan"]), ([], None))
 
-    def test_a_phased_adapter_never_takes_the_text_encoder(self):
-        with self.assertRaises(errors.UnsupportedFeature) as ctx:
-            self.apply(profile="phased", apply_text_encoder=True, strength_clip=0.5, clip=object())
-        self.assertEqual(ctx.exception.issue.param, "apply_text_encoder")
+    def test_a_phased_request_with_the_text_encoder_does_not_raise(self):
+        """MP-73: it runs constant with a warning (integration/test_lora_chain_traps_tiny.py); no file here, so a pass-through."""
+        model = FakeModel()
+        out, profile, clip = node.MossPhotonLoRAProfile().apply(
+            model, lora_name="none", strength_model=1.0, role="character", profile="phased", apply_text_encoder=True,
+            strength_clip=0.5, clip=None)
+        self.assertIs(out, model)
+        self.assertEqual((profile["stack"], profile["phase_plan"], clip), ([], None, None))
 
     def test_unknown_role_is_a_typed_error(self):
         """n1 (R3): reachable through the API, so never a bare ValueError."""

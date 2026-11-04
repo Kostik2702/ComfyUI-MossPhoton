@@ -18,7 +18,7 @@ def peft_split():
 
 
 def peft_fused():
-    """character_b_fused_qkv / lenovo_moss: fused qkv, layer 22 absent: 328 tensors, 164 modules."""
+    """character_b_fused_qkv / a real fused-qkv LoRA: fused qkv, layer 22 absent: 328 tensors, 164 modules."""
     return ["diffusion_model.layers.%d.proj.%s.lora_%s.weight" % (n, m, ab)
             for n in NO22 for m in MODULES4 for ab in "AB"]
 

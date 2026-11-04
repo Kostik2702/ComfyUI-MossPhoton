@@ -94,13 +94,14 @@ def detect_foreign_modifiers(patcher, *, weight_dtype, manual_cast_dtype, refere
     """Sorted tuple of foreign sampling-modifier codes of a ModelPatcher-like object (design 1.2, LD3, M2).
 
     Pure attribute reads (works on fakes). ``weight_dtype`` / ``manual_cast_dtype`` are strings or None;
-    ``reference_dtypes`` are the allowed weight dtypes. Weight patches, attachments and ``patches_uuid`` are not
-    modifiers. A clean ModelPatcher (``model_options == {"transformer_options": {}}``) gives ``()``.
+    ``reference_dtypes`` are the allowed weight dtypes. Weight patches, attachments, ``patches_uuid`` and the LoRA Phase plan
+    (``consts.LORA_PLAN_KEY``, MP-84: it patches nothing) are not modifiers. A clean ModelPatcher
+    (``model_options == {"transformer_options": {}}``) gives ``()``.
     """
     out = set()
     options = getattr(patcher, "model_options", None) or {}
     for key, value in options.items():
-        if key != "transformer_options" and _nonempty(value):
+        if key not in ("transformer_options", consts.LORA_PLAN_KEY) and _nonempty(value):
             out.add(_OPTION_CODES.get(key, "model_option:" + str(key)))
     for key, value in (options.get("transformer_options") or {}).items():
         if _nonempty(value):

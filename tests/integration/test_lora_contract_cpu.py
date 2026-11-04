@@ -57,8 +57,7 @@ class RealLoraNodeContractTest(unittest.TestCase):
         self.assertEqual(report["label"]["parity_class"], "reference_exact")
         self.assertEqual(report["lora"]["stack"], [])
         self.assertEqual(report["lora"]["foreign_patches"]["entries_observed"], 0)
-        with self.assertRaises(self.errors.MissingLora):
-            self.label(model, profile, "identity_safe")
+        self.assertIn("lora_not_recorded", ss.codes(self.label(model, profile, "identity_safe")))  # MP-84: a note, no error
 
     def test_a_zero_strength_node_is_a_pass_through_too(self):
         model, profile, _ = lora_synth.run_node(self.base, "char.safetensors", strength_model=0.0)

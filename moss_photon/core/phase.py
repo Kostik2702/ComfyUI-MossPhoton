@@ -165,12 +165,14 @@ def weight_profile_of(plan):
     return {"kind": "phased", "w0": plan.w0, "w1": plan.w1, "a": plan.a, "b": plan.b}
 
 
-def check_phase_plan(profile, *, node, allowed):
+def check_phase_plan(profile, *, node):
     """The ``PhasePlan`` of an identity profile, or ``None`` when no adapter is phased.
 
-    ``allowed`` is True for MossPhotonSamplerAdvanced only: any other node raises ``unsupported_feature`` naming it.
-    Also refused: a ``phase_plan`` without exactly one phased stack entry (and the reverse), an entry whose
-    ``weight_profile`` differs from the plan, a ``weight_profile.kind`` this version does not know, a malformed plan.
+    Refused: a ``phase_plan`` without exactly one phased stack entry (and the reverse), an entry whose
+    ``weight_profile`` differs from the plan, a ``weight_profile.kind`` this version does not know, a malformed plan (a
+    profile that does not describe itself consistently). Which node may RUN a phased weight is the solver's decision
+    (MP-84: the basic sampler runs it constant at its nominal strength with the warning ``phased_lora_demoted``; it was
+    ``unsupported_feature`` before).
     """
     if profile is None:
         return None
@@ -184,11 +186,6 @@ def check_phase_plan(profile, *, node, allowed):
     phased = [i for i, k in enumerate(kinds) if k == "phased"]
     if raw is None and not phased:
         return None
-    if not allowed:
-        _refuse(node, "identity_profile",
-                "the identity profile carries a phased LoRA weight (phase_plan), which only %s runs" % ADVANCED_NODE,
-                "connect the profile to %s, or set MossPhotonLoRAProfile profile=constant" % ADVANCED_NODE,
-                node_required=ADVANCED_NODE)
     if raw is None or len(phased) != 1:
         _refuse(node, "identity_profile", "a phased profile needs a phase_plan and exactly one phased stack entry "
                 "(plan: %s, phased entries: %d)" % ("set" if raw is not None else "missing", len(phased)),

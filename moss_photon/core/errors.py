@@ -275,6 +275,45 @@ _STATUS_SEVERITY = (
     ("phase_lora_experimental", "warning"),
     # MP-50: a file the pack knows as a distill LoRA (consts.KNOWN_DISTILL_LORAS) loaded with another role.
     ("distill_lora_role_mismatch", "warning"),
+    # MP-58: MossPhotonIdentityDetailer (SPEC 4.2 item 3). unscorable_face / missing_guard_dependency / foreign_patches /
+    # reference_photos_ignored above are reused; these are the detailer's own notes.
+    ("face_large_skipped", "info"), ("no_face_found", "info"), ("detailer_rejected", "info"),
+    ("face_not_this_character", "info"), ("reference_no_face", "warning"),
+    # MP-60 (audit F02): the PHOTON_CONSTRAINTS do not describe the conditioning the sampler received (another branch,
+    # or the conditioning was changed after MossPhotonPromptLayout); the checks that read them are skipped.
+    ("constraints_conditioning_mismatch", "warning"),
+    # MP-57: a run of a preset with a darkroom block (phased guidance / character weight / re-expose / noise), experimental.
+    ("darkroom_experimental", "warning"),
+    # MP-67: a constant character profile and a recipe that boosts the character weight: the LoRA file could not be
+    # re-read for the extra patch, so the run goes on without the boost.
+    ("darkroom_boost_skipped", "warning"),
+    # MP-67 / MP-71: a finish_model is connected and the run has no model switch (switch_model resolves to off, or the preset
+    # has no darkroom block): the finish model is ignored (a setting conflict degrades to a warning).
+    ("finish_model_ignored", "warning"),
+    # MP-71: a darkroom phase knob of MossPhotonSamplerAdvanced was set on a preset without a darkroom block (or a knob that
+    # another input replaces): the knob is ignored (a setting conflict degrades to a warning), the run is the stock one.
+    ("darkroom_override_ignored", "warning"),
+    # MP-73: LoRA chain setting conflicts degrade to a warning instead of an exception. phased_lora_demoted: a profile=phased
+    # request runs constant at strength_model (the phased profile stays on the character LoRA; or phased with the text
+    # encoder, or a window with a >= b); lora_setting_ignored: apply_text_encoder with no clip connected.
+    ("phased_lora_demoted", "warning"), ("lora_setting_ignored", "warning"),
+    # MP-76: preset_pin names the installed id and version but another sha8 (the preset content changed without a version
+    # bump): the installed preset runs, the warning names both pins.
+    ("preset_changed_same_version", "warning"),
+    # MP-84 (v2 step 1, owner decision 2026-11-02: a settings conflict degrades to a warning, never an exception). Each code
+    # names the conflict, never a value that is private. lora_not_recorded: a preset expects a LoRA role and none is recorded
+    # (ordinary loaders, a LoRA Phase plan and merged checkpoints are not recorded as roles). phase_plan_ignored: a LoRA Phase
+    # plan on a preset without Darkroom phases runs every entry at its constant strength. setting_adjusted: a value outside what
+    # the engine can use was clamped, sorted or resampled. override_outside_bounds: an override outside the preset's
+    # override_bounds is used as given. forward_budget_exceeded: the plan is over max_forwards and runs anyway.
+    # preset_pin_mismatch: the workflow's pin names another id, version or malformed text; the installed preset runs.
+    # multiple_distill_loras: a second distill LoRA in one chain. lora_plan_after_patches (info): an ordinary loader ran after
+    # a LoRA Phase node; the plan entries are applied on top of every patch of the MODEL, so the entry runs after that loader.
+    # lora_plan_entry_inactive: an entry (strength != 0) acts in no darkroom phase its MODEL runs, so it changes nothing.
+    ("lora_not_recorded", "warning"), ("phase_plan_ignored", "warning"), ("setting_adjusted", "warning"),
+    ("override_outside_bounds", "warning"), ("forward_budget_exceeded", "warning"),
+    ("preset_pin_mismatch", "warning"), ("multiple_distill_loras", "warning"), ("lora_plan_after_patches", "info"),
+    ("lora_plan_entry_inactive", "warning"),
 )
 
 

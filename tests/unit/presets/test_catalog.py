@@ -81,11 +81,12 @@ class CatalogFilesTest(unittest.TestCase):
             self.assertEqual((s["slg_mode"], s["slg_layers"], s["slg_start"], s["slg_end"]),
                              ("uncond_skip", [22], 0.0, 1.0), pid)
 
-    def test_identity_safe_requires_character_lora(self):
+    def test_identity_safe_expects_a_character_lora_without_requiring_it(self):
+        """MP-84 (owner 2026-11-02): no preset requires a LoRA role; the entry stays as a warning, reason none."""
         p = presets.catalog()["identity_safe"]
         self.assertEqual(p["lora_policy"], "require_explicit_user_profile")
         c = [c for c in p["constraints"] if c["kind"] == "requires_lora_role"]
-        self.assertEqual([(x["role"], x["severity"], x["reason"]) for x in c], [("character", "error", "missing_lora")])
+        self.assertEqual([(x["role"], x["severity"], x["reason"]) for x in c], [("character", "warning", "none")])
 
     def test_block_constraints(self):
         cat = presets.catalog()
@@ -104,7 +105,8 @@ class CatalogFilesTest(unittest.TestCase):
 
     def test_sources_cover_every_numeric_leaf(self):
         for pid, p in presets.catalog().items():
-            leaves = set(presets._numeric_leaves({"sampling": p["sampling"], "budget": p["budget"]}))
+            leaves = set(presets._numeric_leaves({"sampling": p["sampling"], "budget": p["budget"],
+                                                  **({"darkroom": p["darkroom"]} if "darkroom" in p else {})}))
             if p["budget"]["max_forwards"] is None:
                 leaves.discard("budget.max_forwards")
             self.assertEqual(leaves, set(p["sources"]), pid)

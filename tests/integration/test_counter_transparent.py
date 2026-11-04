@@ -37,6 +37,18 @@ class CounterTest(unittest.TestCase):
         tiny_moss.sample_euler(self.tiny, counted, cfg=1.0)
         self.assertEqual((stats.calls, stats.elements), (6, 6))
 
+    def test_the_same_stats_installed_twice_count_once_and_another_stats_counts_too(self):
+        """MP-84: the darkroom shares a level clone between segments and installs the counter on it again; a caller's own
+        counter (another ``stats``) stays and counts beside it."""
+        counted, stats = self.counted(self.tiny.patcher)
+        self.solver.install_counter(counted, stats)
+        clone = counted.clone()     # a clone inherits the counter
+        self.solver.install_counter(clone, stats)
+        other = self.solver.ForwardStats()
+        self.solver.install_counter(clone, other)
+        tiny_moss.sample_euler(self.tiny, clone, cfg=1.0)
+        self.assertEqual((stats.calls, other.calls), (6, 6))
+
     def test_the_wrapper_lives_on_the_clone_only(self):
         before = dict(self.tiny.patcher.model_options["transformer_options"])
         counted, _ = self.counted(self.tiny.patcher)

@@ -11,13 +11,15 @@ from moss_photon.core import consts, errors, presets
 from .test_schema_crosscheck import jsonschema, lite_set, ref_set
 
 TURBO = ("turbo_8step", "turbo_identity")
+DARKROOM = ("turbo_darkroom_portrait", "turbo_darkroom_fullbody")  # MP-71: turbo presets with a darkroom block
 NON_TURBO = tuple(consts.PRESET_IDS)
 
-# sha256 of the eight pre-turbo preset files at git HEAD 136625b (MP-7); they must stay byte-identical.
+# sha256 of the eight pre-turbo preset files at git HEAD 136625b (MP-7); they must stay byte-identical. The one amendment:
+# MP-84 (owner 2026-11-02) turned the requires_lora_role entry of identity_safe from error/missing_lora into warning/none.
 SHIPPED_SHA256 = {
     "advanced.json": "c9556fa63274401c0b35913ed4fd268a578fd2f4ab2375f3602f55ce3b8b43db",
     "draft_fast.json": "79e14bf1ef37b3b36c3c4867696569928994ea4d453ddf70f09cc6d1f41b80af",
-    "identity_safe.json": "a26b473dd2cbb634e6444ca2e4662e2e8be64f1c9ecb46197cf004f85c57d53f",
+    "identity_safe.json": "3b465fe6c62240aec53464a85c51a8116e1f375772c4c00956ec3951fe0e2e5f",
     "night_photo.json": "d70bc747e7cfe5755e508c411dd8ff51667c40fb033a07ad6c29d4b0f0bd5b39",
     "photo_safe.json": "01c9456b5f2ebac23abc90664a1be21d6a23550ac60fa1cd6d28f1c36e1901e5",
     "reference.json": "d87c98041e6b993e523078076a71ec1edc54fb7e9ad7769cb27ecaae5908cfa8",
@@ -40,10 +42,10 @@ def codes(resolved):
 
 class TurboCatalogTest(unittest.TestCase):
     def test_ids_and_order(self):
-        self.assertEqual(presets.TURBO_PRESET_IDS, TURBO)
-        self.assertEqual(presets.ALL_PRESET_IDS, tuple(consts.PRESET_IDS) + TURBO)
+        self.assertEqual(presets.TURBO_PRESET_IDS, TURBO + DARKROOM)
+        self.assertEqual(presets.ALL_PRESET_IDS, tuple(consts.PRESET_IDS) + TURBO + DARKROOM)
         self.assertEqual(presets.catalog_ids(), list(presets.ALL_PRESET_IDS))
-        self.assertEqual(len(presets.catalog()), 10)
+        self.assertEqual(len(presets.catalog()), 12)
         names = sorted(n for n in os.listdir(presets.preset_dir()) if n.endswith(".json") and n != "schema.json")
         self.assertEqual(names, sorted(pid + ".json" for pid in presets.ALL_PRESET_IDS))
 
@@ -74,8 +76,9 @@ class TurboCatalogTest(unittest.TestCase):
         cat = presets.catalog()
         a, b = cat["turbo_8step"], cat["turbo_identity"]
         self.assertEqual(a["lora_policy"], "require_distill_profile")
+        # MP-84: a role is never required: the entry stays (it names the recipe's LoRA) as a warning, reason none
         self.assertEqual([(c["kind"], c.get("role"), c["severity"], c["reason"]) for c in a["constraints"]
-                          if c["kind"] == "requires_lora_role"], [("requires_lora_role", "distill", "error", "missing_lora")])
+                          if c["kind"] == "requires_lora_role"], [("requires_lora_role", "distill", "warning", "none")])
         self.assertEqual([c["roles"] for c in a["constraints"] if c["kind"] == "limits_lora_roles"], [["distill"]])
         self.assertEqual(b["lora_policy"], "require_distill_and_character_profile")
         self.assertEqual(sorted(c["role"] for c in b["constraints"] if c["kind"] == "requires_lora_role"),
@@ -161,36 +164,46 @@ class TurboOverrideTest(unittest.TestCase):
         self.assertEqual([w.param for w in r.warnings if w.code == "turbo_setting_outside_verified"], ["steps", "cfg"])
         self.assertEqual(r.effective["budget"]["nominal_steps"], 16)
 
-    def test_outside_bounds_is_invalid_override(self):
-        for ov in ({"steps": 7}, {"steps": 4}, {"steps": 17}, {"steps": 50}, {"cfg": 2.01}, {"cfg": 3.0}, {"cfg": 30.0}):
-            with self.assertRaises(errors.InvalidOverride, msg=str(ov)) as cm:
-                presets.resolve("turbo_8step", overrides=ov)
-            self.assertEqual(cm.exception.issue.code, "invalid_override")
-            self.assertIn("[", cm.exception.issue.message, ov)
+    def test_outside_bounds_is_used_as_given_with_a_warning(self):
+        """MP-84 (owner 2026-11-02): it was ``invalid_override``; a value outside the bounds runs, the warning names the range."""
+        for ov, param in (({"steps": 7}, "steps"), ({"steps": 4}, "steps"), ({"steps": 17}, "steps"),
+                          ({"steps": 50}, "steps"), ({"cfg": 2.01}, "cfg"), ({"cfg": 3.0}, "cfg"), ({"cfg": 30.0}, "cfg")):
+            r = presets.resolve("turbo_8step", overrides=ov)
+            self.assertEqual(r.effective["sampling"][param], ov[param], ov)
+            hit = [w for w in r.warnings if w.code == "override_outside_bounds"]
+            self.assertEqual([(w.severity, w.param) for w in hit], [("warning", param)], ov)
+            self.assertIn("[", hit[0].message, ov)
+            self.assertNotIn("turbo_setting_outside_verified", codes(r), "one warning per setting, not two")
+            self.assertTrue(r.customized)
 
     def test_bounds_message_names_the_range(self):
-        with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("turbo_8step", overrides={"steps": 17})
-        self.assertIn("[8, 16]", cm.exception.issue.message)
-        with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("turbo_8step", overrides={"cfg": 2.5})
-        self.assertIn("[1.0, 2.0]", cm.exception.issue.message)
+        hit = [w for w in presets.resolve("turbo_8step", overrides={"steps": 17}).warnings
+               if w.code == "override_outside_bounds"]
+        self.assertIn("[8, 16]", hit[0].message)
+        self.assertIn("[8, 8]", hit[0].message)
+        hit = [w for w in presets.resolve("turbo_8step", overrides={"cfg": 2.5}).warnings
+               if w.code == "override_outside_bounds"]
+        self.assertIn("[1.0, 2.0]", hit[0].message)
 
-    def test_slg_override_only_in_advanced(self):
+    def test_slg_override_only_in_advanced_is_dropped_elsewhere_with_a_warning(self):
         for pid in TURBO:
             for ov in ({"slg_mode": "uncond_skip", "slg_layers": [22]}, {"slg_mode": "uncond_skip"}, {"slg_layers": [22]},
                        {"slg_start": 0.1}, {"slg_end": 0.5}):
-                with self.assertRaises(errors.InvalidOverride, msg="%s %s" % (pid, ov)):
-                    presets.resolve(pid, overrides=ov)
+                with self.subTest(preset=pid, ov=ov):
+                    r = presets.resolve(pid, overrides=ov)
+                    smp = r.effective["sampling"]
+                    self.assertEqual((smp["slg_mode"], smp["slg_layers"], smp["slg_start"], smp["slg_end"]),
+                                     ("off", [], 0.0, 1.0), "the override is dropped")
+                    self.assertIn("setting_adjusted", codes(r))
             # restating the preset value is not an SLG override
-            presets.resolve(pid, overrides={"slg_mode": "off", "slg_layers": [], "slg_start": 0.0, "slg_end": 1.0})
+            self.assertNotIn("setting_adjusted", codes(presets.resolve(pid, overrides={
+                "slg_mode": "off", "slg_layers": [], "slg_start": 0.0, "slg_end": 1.0})))
         r = presets.resolve("advanced", overrides={"cfg": 1.0})
         self.assertEqual(r.effective["sampling"]["slg_mode"], "uncond_skip")
 
-    def test_the_refusal_names_the_node_that_allows_it(self):
-        with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("turbo_8step", overrides={"slg_mode": "uncond_skip", "slg_layers": [22]})
-        issue = cm.exception.issue
+    def test_the_warning_names_the_node_that_allows_it(self):
+        r = presets.resolve("turbo_8step", overrides={"slg_mode": "uncond_skip", "slg_layers": [22]})
+        issue = next(w for w in r.warnings if w.code == "setting_adjusted")
         self.assertIn("MossPhotonSamplerAdvanced", issue.message + issue.fix)
         self.assertNotIn("advanced preset", issue.message)
 
@@ -212,9 +225,10 @@ class TurboOverrideTest(unittest.TestCase):
         self.assertNotIn("turbo_slg_experimental", codes(r))
 
     def test_the_flag_does_not_widen_the_bounds(self):
-        with self.assertRaises(errors.InvalidOverride):
-            presets.resolve("turbo_8step", overrides={"cfg": 3.0, "slg_mode": "uncond_skip", "slg_layers": [22]},
+        r = presets.resolve("turbo_8step", overrides={"cfg": 3.0, "slg_mode": "uncond_skip", "slg_layers": [22]},
                             allow_slg_override=True)
+        self.assertIn("override_outside_bounds", codes(r))
+        self.assertIn("turbo_slg_experimental", codes(r))
 
     def test_slg_at_cfg1_on_turbo_is_inert_and_says_so(self):
         r = presets.resolve("turbo_8step", overrides={"slg_mode": "uncond_skip", "slg_layers": [22]},
@@ -222,27 +236,29 @@ class TurboOverrideTest(unittest.TestCase):
         self.assertIn("slg_ineffective_cfg1", codes(r))
 
     def test_override_error_fix_names_the_bounds_and_the_preset_value_route(self):
-        """MP-30 m6: the fix text of a turbo bounds error names the bounds and cfg 0 (= preset value)."""
+        """MP-30 m6: the fix text of an override error (a value of the wrong type: only an API caller makes one, MP-84) on a
+        turbo preset names the bounds and cfg 0 (= preset value)."""
         with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("turbo_8step", overrides={"cfg": 3.0})
+            presets.resolve("turbo_8step", overrides={"cfg": "3"})
         fix = cm.exception.issue.fix
         self.assertIn("steps [8, 16]", fix)
         self.assertIn("cfg [1.0, 2.0]", fix)
         self.assertIn("cfg to 0", fix)
         self.assertNotIn("schema.json", fix)
 
-    def test_a_bad_slg_layer_in_the_advanced_node_does_not_get_the_advanced_only_advice(self):
-        with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("turbo_8step", overrides={"slg_mode": "uncond_skip", "slg_layers": [99]}, num_layers=24,
+    def test_a_bad_slg_layer_in_the_advanced_node_is_dropped_with_a_warning(self):
+        r = presets.resolve("turbo_8step", overrides={"slg_mode": "uncond_skip", "slg_layers": [99]}, num_layers=24,
                             allow_slg_override=True)
-        issue = cm.exception.issue
-        self.assertEqual(issue.param, "slg_layers")
-        self.assertNotIn("only", issue.fix)
-        self.assertNotIn("cfg to 0", issue.fix)
+        adjusted = [w for w in r.warnings if w.code == "setting_adjusted"]
+        self.assertEqual([w.param for w in adjusted], ["slg_layers", "slg_mode"])
+        self.assertEqual(r.effective["sampling"]["slg_mode"], "off")
+        for w in adjusted:
+            self.assertNotIn("only", w.fix)
+            self.assertNotIn("cfg to 0", w.fix)
 
     def test_override_error_fix_of_a_preset_without_bounds_is_unchanged_in_kind(self):
         with self.assertRaises(errors.InvalidOverride) as cm:
-            presets.resolve("reference", overrides={"steps": 0})
+            presets.resolve("reference", overrides={"steps": "0"})
         self.assertNotIn("cfg to 0", cm.exception.issue.fix)
 
     def test_slg_ineffective_at_cfg1_in_advanced(self):
@@ -260,14 +276,24 @@ class TurboOverrideTest(unittest.TestCase):
 
 
 class TurboRequirementsTest(unittest.TestCase):
-    def test_turbo_8step_needs_distill(self):
+    """MP-84: no preset requires a LoRA role. A role nobody recorded is the warning ``lora_not_recorded`` (nothing when the MODEL
+    carries patches no profile explains: ``lora_present``); for the distill role it is an info (turbo comes from the preset, a
+    merged distill checkpoint is legitimate); a distill LoRA in a preset that is not turbo is a warning."""
+
+    def test_turbo_8step_expects_a_distill_and_only_says_so(self):
         got = req("turbo_8step", lora_roles=[])
-        self.assertEqual(pairs(got), [("missing_lora", "error")])
+        self.assertEqual(pairs(got), [("lora_not_recorded", "info")])
         self.assertIn("role=distill", got[0].fix)
-        with self.assertRaises(errors.MissingLora):
-            errors.raise_first_error(got)
+        self.assertIn("merged distill checkpoint is assumed", got[0].message)
+        self.assertIsNone(errors.raise_first_error(got))
         self.assertEqual(req("turbo_8step", lora_roles=["distill"]), [])
-        self.assertEqual(pairs(req("turbo_8step")), [("missing_lora", "error")])
+        self.assertEqual(pairs(req("turbo_8step")), [("lora_not_recorded", "info")])
+
+    def test_a_model_with_patches_nobody_recorded_is_not_missing_a_role(self):
+        """An ordinary loader (a merged checkpoint, a stock LoraLoader) cannot be told from a recorded one: no note."""
+        for pid in ("turbo_8step", "turbo_identity", "identity_safe"):
+            self.assertEqual([i.code for i in req(pid, lora_roles=[], lora_present=True) if i.code == "lora_not_recorded"],
+                             [], pid)
 
     def test_turbo_8step_with_character_warns_and_hints_identity(self):
         got = req("turbo_8step", lora_roles=["distill", "character"])
@@ -275,34 +301,31 @@ class TurboRequirementsTest(unittest.TestCase):
         self.assertIn("turbo_identity", got[0].fix)
         self.assertIsNone(errors.raise_first_error(got))
         got = req("turbo_8step", lora_roles=["character"])
-        self.assertEqual(pairs(got), [("missing_lora", "error"), ("preset_lora_roles_exceeded", "warning")])
+        self.assertEqual(pairs(got), [("lora_not_recorded", "info"), ("preset_lora_roles_exceeded", "warning")])
         self.assertEqual(pairs(req("turbo_8step", lora_roles=["distill", "style", "scene"])),
                          [("preset_lora_roles_exceeded", "warning")])
 
-    def test_turbo_identity_needs_both(self):
+    def test_turbo_identity_expects_both_and_only_says_so(self):
         self.assertEqual(pairs(req("turbo_identity", lora_roles=[])),
-                         [("missing_lora", "error"), ("missing_lora", "error"), ("reference_photos_recommended", "info")])
+                         [("lora_not_recorded", "info"), ("lora_not_recorded", "warning"),
+                          ("reference_photos_recommended", "info")])
         got = req("turbo_identity", lora_roles=["distill"])
-        self.assertEqual(pairs(got), [("missing_lora", "error"), ("reference_photos_recommended", "info")])
+        self.assertEqual(pairs(got), [("lora_not_recorded", "warning"), ("reference_photos_recommended", "info")])
         self.assertIn("role=character", got[0].fix)
         got = req("turbo_identity", lora_roles=["character"])
-        self.assertEqual(pairs(got), [("missing_lora", "error"), ("reference_photos_recommended", "info")])
+        self.assertEqual(pairs(got), [("lora_not_recorded", "info"), ("reference_photos_recommended", "info")])
         self.assertIn("role=distill", got[0].fix)
         self.assertEqual(pairs(req("turbo_identity", lora_roles=["distill", "character"])), [("reference_photos_recommended", "info")])
         self.assertEqual(req("turbo_identity", lora_roles=["distill", "character"], reference_photos=True), [])
 
-    def test_distill_in_non_turbo_preset(self):
+    def test_distill_in_non_turbo_preset_is_a_warning(self):
         for pid in NON_TURBO:
             got = req(pid, lora_roles=["distill"])
-            if pid == "advanced":
-                self.assertEqual(pairs(got), [("distill_lora_non_turbo", "warning")], pid)
-                self.assertIsNone(errors.raise_first_error(got))
-            else:
-                hit = [i for i in got if i.code == "incompatible_lora"]
-                self.assertEqual(pairs(hit), [("incompatible_lora", "error")], pid)
-                with self.assertRaises(errors.IncompatibleLora):
-                    errors.raise_first_error(hit)
-                self.assertIn("turbo_8step", hit[0].fix)
+            hit = [i for i in got if i.code == "distill_lora_non_turbo"]
+            self.assertEqual(pairs(hit), [("distill_lora_non_turbo", "warning")], pid)
+            self.assertEqual([i.code for i in got if i.severity == "error" and i.code != "missing_required_input"], [], pid)
+            self.assertIn("turbo_8step", hit[0].fix)
+            self.assertIn(pid, hit[0].message)
 
     def test_no_distill_no_new_issue_in_non_turbo(self):
         for pid in ("reference", "photo_safe", "night_photo", "draft_fast", "advanced"):
@@ -353,8 +376,8 @@ class TurboSchemaAgreementTest(unittest.TestCase):
         cls.schema = presets.load_schema()
         cls.cat = presets.catalog()
 
-    def test_ten_presets_valid_in_both(self):
-        self.assertEqual(len(self.cat), 10)
+    def test_all_presets_valid_in_both(self):
+        self.assertEqual(len(self.cat), 12)
         for pid, p in self.cat.items():
             self.assertEqual(ref_set(p, self.schema), set(), pid)
             self.assertEqual(lite_set(p, self.schema), set(), pid)

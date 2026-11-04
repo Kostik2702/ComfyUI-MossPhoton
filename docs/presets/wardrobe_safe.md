@@ -48,7 +48,7 @@ Read from `presets/wardrobe_safe.json`. These are the values the sampler uses wh
 Always: `model`, `positive`, `negative`, `latent`, `seed`. Then:
 
 - `MossPhotonPromptLayout` with the `wardrobe` block filled, its `constraints` output connected to the sampler (empty block: error `missing_required_input`).
-- A character LoRA is optional (owner decision OD2).
+- A character LoRA is optional (maintainers' decision).
 
 Constraints evaluated before sampling (from the preset file):
 
@@ -84,12 +84,12 @@ Guards declared by the preset (none of them runs in v1):
 
 ## A/B report
 
-Pending MP-12 / calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
+Pending calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
 
 ### Examples of successes
 
-pending MP-12 / calibration.
+pending calibration.
 
 ### Examples of failures and worst cases
 
-pending MP-12 / calibration.
+pending calibration.

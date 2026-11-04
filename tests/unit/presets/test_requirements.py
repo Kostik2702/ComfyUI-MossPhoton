@@ -15,16 +15,24 @@ def pairs(found):
 class RequirementsTest(unittest.TestCase):
     def test_identity_safe_without_and_with_character_lora(self):
         got = issues("identity_safe", lora_roles=[])
-        self.assertEqual(pairs(got), [("missing_lora", "error"), ("reference_photos_recommended", "info")])
+        self.assertEqual(pairs(got), [("lora_not_recorded", "warning"), ("reference_photos_recommended", "info")])
         self.assertEqual(got[0].param, "identity_profile")
         self.assertIn("MossPhotonLoRAProfile", got[0].fix)
-        self.assertEqual(pairs(issues("identity_safe", lora_roles=["style"])), [("missing_lora", "error"), ("reference_photos_recommended", "info")])
+        self.assertEqual(pairs(issues("identity_safe", lora_roles=["style"])),
+                         [("lora_not_recorded", "warning"), ("reference_photos_recommended", "info")])
         self.assertEqual(pairs(issues("identity_safe", lora_roles=["style", "character"])), [("reference_photos_recommended", "info")])
         self.assertEqual(issues("identity_safe", lora_roles=["character"], reference_photos=True), [])
 
-    def test_error_issue_raises_the_registered_exception(self):
-        with self.assertRaises(errors.MissingLora):
-            errors.raise_first_error(issues("identity_safe", lora_roles=[]))
+    def test_a_missing_role_never_raises(self):
+        """MP-84: a role is never required. ``missing_lora`` is not raised by a preset any more (the code stays registered)."""
+        self.assertIsNone(errors.raise_first_error(issues("identity_safe", lora_roles=[])))
+        self.assertIn("missing_lora", errors.REASONS)
+        self.assertEqual(errors.REASONS["lora_not_recorded"].severity, "warning")
+        self.assertIsNone(errors.REASONS["lora_not_recorded"].exc)
+
+    def test_patches_nobody_recorded_are_not_a_missing_role(self):
+        self.assertEqual(pairs(issues("identity_safe", lora_roles=[], lora_present=True)),
+                         [("reference_photos_recommended", "info")])
 
     def test_wardrobe_safe_empty_and_filled_block(self):
         self.assertEqual(pairs(issues("wardrobe_safe", blocks_present={"wardrobe": False})),
@@ -89,21 +97,21 @@ class RequirementsTest(unittest.TestCase):
 
     def missing(self, pid, stack):
         ctx = {"lora_roles": [s["role"] for s in stack], "lora_stack": stack}
-        return [i for i in issues(pid, **ctx) if i.code == "missing_lora"]
+        return [i for i in issues(pid, **ctx) if i.code == "lora_not_recorded"]
 
     def test_a_known_distill_file_under_another_role_is_named(self):
-        """MP-50: the owner's graph had lodestones-8-steps-dmd2-lora with role=other; the error listed bare roles."""
+        """MP-50: the owner's graph had lodestones-8-steps-dmd2-lora with role=other; the note listed bare roles."""
         got = self.missing("turbo_8step", [self.item(self.NAME, "other", self.DMD2)])
         self.assertEqual(len(got), 1)
         self.assertIn("%s is a known distill LoRA but is loaded with role 'other'" % self.NAME, got[0].message)
         self.assertIn("set role=distill on the MossPhotonLoRAProfile that loads %s" % self.NAME, got[0].fix)
         self.assertEqual(got[0].detail["known_distill"], [{"basename": self.NAME, "role": "other"}])
 
-    def test_the_error_still_raises_missing_lora_and_changes_no_role(self):
+    def test_the_note_is_a_warning_and_changes_no_role(self):
         stack = [self.item(self.NAME, "other", self.DMD2)]
         got = self.missing("turbo_8step", stack)
-        with self.assertRaises(errors.MissingLora):
-            errors.raise_first_error(got)
+        self.assertEqual([i.severity for i in got], ["warning"])
+        self.assertIsNone(errors.raise_first_error(got))
         self.assertEqual(stack, [self.item(self.NAME, "other", self.DMD2)])
 
     def test_turbo_identity_names_the_wrong_role_distill_and_keeps_the_character_requirement_apart(self):
@@ -125,7 +133,7 @@ class RequirementsTest(unittest.TestCase):
         self.assertIn("present: none", self.missing("turbo_8step", [])[0].message)
 
     def test_without_a_stack_in_the_context_the_old_role_list_is_used(self):
-        got = [i for i in issues("turbo_8step", lora_roles=["character"]) if i.code == "missing_lora"]
+        got = [i for i in issues("turbo_8step", lora_roles=["character"]) if i.code == "lora_not_recorded"]
         self.assertIn("roles present: ['character']", got[0].message)
 
     def test_an_incompatible_hash_is_not_advertised_as_a_distill_to_re_role(self):

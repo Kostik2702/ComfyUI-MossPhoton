@@ -2,7 +2,7 @@
  "id": "e60198b5-c89c-5d34-ad1b-5d6bd16371a2",
  "revision": 0,
  "last_node_id": 12,
- "last_link_id": 17,
+ "last_link_id": 15,
  "nodes": [
   {
    "id": 1,
@@ -142,8 +142,8 @@
      "name": "VAE",
      "type": "VAE",
      "links": [
-      10,
-      13
+      9,
+      11
      ],
      "slot_index": 0
     }
@@ -200,7 +200,7 @@
      "name": "latent",
      "type": "LATENT",
      "links": [
-      8
+      7
      ],
      "slot_index": 0
     }
@@ -328,7 +328,7 @@
      "name": "positive",
      "type": "CONDITIONING",
      "links": [
-      6
+      5
      ],
      "slot_index": 0
     },
@@ -336,7 +336,7 @@
      "name": "negative",
      "type": "CONDITIONING",
      "links": [
-      7
+      6
      ],
      "slot_index": 1
     },
@@ -344,7 +344,7 @@
      "name": "constraints",
      "type": "PHOTON_CONSTRAINTS",
      "links": [
-      9
+      8
      ],
      "slot_index": 2
     }
@@ -368,14 +368,14 @@
   },
   {
    "id": 6,
-   "type": "MossPhotonLoRAProfile",
+   "type": "LoraLoaderModelOnly",
    "pos": [
     420,
     540
    ],
    "size": [
     420,
-    360
+    130
    ],
    "flags": {},
    "order": 5,
@@ -401,159 +401,36 @@
       "name": "strength_model"
      },
      "link": null
-    },
-    {
-     "name": "role",
-     "type": "COMBO",
-     "widget": {
-      "name": "role"
-     },
-     "link": null
-    },
-    {
-     "name": "profile",
-     "type": "COMBO",
-     "widget": {
-      "name": "profile"
-     },
-     "link": null
-    },
-    {
-     "name": "trigger",
-     "type": "STRING",
-     "widget": {
-      "name": "trigger"
-     },
-     "link": null
-    },
-    {
-     "name": "profile_in",
-     "type": "PHOTON_IDENTITY_PROFILE",
-     "link": null
-    },
-    {
-     "name": "clip",
-     "type": "CLIP",
-     "link": null
-    },
-    {
-     "name": "apply_text_encoder",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "apply_text_encoder"
-     },
-     "link": null
-    },
-    {
-     "name": "strength_clip",
-     "type": "FLOAT",
-     "widget": {
-      "name": "strength_clip"
-     },
-     "link": null
-    },
-    {
-     "name": "allow_low_coverage",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "allow_low_coverage"
-     },
-     "link": null
-    },
-    {
-     "name": "fingerprint",
-     "type": "COMBO",
-     "widget": {
-      "name": "fingerprint"
-     },
-     "link": null
-    },
-    {
-     "name": "w0",
-     "type": "FLOAT",
-     "widget": {
-      "name": "w0"
-     },
-     "link": null
-    },
-    {
-     "name": "w1",
-     "type": "FLOAT",
-     "widget": {
-      "name": "w1"
-     },
-     "link": null
-    },
-    {
-     "name": "a",
-     "type": "FLOAT",
-     "widget": {
-      "name": "a"
-     },
-     "link": null
-    },
-    {
-     "name": "b",
-     "type": "FLOAT",
-     "widget": {
-      "name": "b"
-     },
-     "link": null
     }
    ],
    "outputs": [
     {
-     "name": "model",
+     "name": "MODEL",
      "type": "MODEL",
      "links": [
       3
      ],
      "slot_index": 0
-    },
-    {
-     "name": "identity_profile",
-     "type": "PHOTON_IDENTITY_PROFILE",
-     "links": [
-      4
-     ],
-     "slot_index": 1
-    },
-    {
-     "name": "clip",
-     "type": "CLIP",
-     "links": null,
-     "slot_index": 2
     }
    ],
    "properties": {
-    "Node name for S&R": "MossPhotonLoRAProfile"
+    "Node name for S&R": "LoraLoaderModelOnly"
    },
    "widgets_values": [
     "lodestones-8-steps-dmd2-lora.safetensors",
-    1.0,
-    "distill",
-    "constant",
-    "",
-    false,
-    0.0,
-    false,
-    "cached_or_compute",
-    0.3,
-    0.9,
-    0.2,
-    0.6
+    1.0
    ]
   },
   {
    "id": 7,
-   "type": "MossPhotonLoRAProfile",
+   "type": "LoraLoaderModelOnly",
    "pos": [
     420,
     940
    ],
    "size": [
     420,
-    360
+    130
    ],
    "flags": {},
    "order": 6,
@@ -579,147 +456,24 @@
       "name": "strength_model"
      },
      "link": null
-    },
-    {
-     "name": "role",
-     "type": "COMBO",
-     "widget": {
-      "name": "role"
-     },
-     "link": null
-    },
-    {
-     "name": "profile",
-     "type": "COMBO",
-     "widget": {
-      "name": "profile"
-     },
-     "link": null
-    },
-    {
-     "name": "trigger",
-     "type": "STRING",
-     "widget": {
-      "name": "trigger"
-     },
-     "link": null
-    },
-    {
-     "name": "profile_in",
-     "type": "PHOTON_IDENTITY_PROFILE",
-     "link": 4
-    },
-    {
-     "name": "clip",
-     "type": "CLIP",
-     "link": null
-    },
-    {
-     "name": "apply_text_encoder",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "apply_text_encoder"
-     },
-     "link": null
-    },
-    {
-     "name": "strength_clip",
-     "type": "FLOAT",
-     "widget": {
-      "name": "strength_clip"
-     },
-     "link": null
-    },
-    {
-     "name": "allow_low_coverage",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "allow_low_coverage"
-     },
-     "link": null
-    },
-    {
-     "name": "fingerprint",
-     "type": "COMBO",
-     "widget": {
-      "name": "fingerprint"
-     },
-     "link": null
-    },
-    {
-     "name": "w0",
-     "type": "FLOAT",
-     "widget": {
-      "name": "w0"
-     },
-     "link": null
-    },
-    {
-     "name": "w1",
-     "type": "FLOAT",
-     "widget": {
-      "name": "w1"
-     },
-     "link": null
-    },
-    {
-     "name": "a",
-     "type": "FLOAT",
-     "widget": {
-      "name": "a"
-     },
-     "link": null
-    },
-    {
-     "name": "b",
-     "type": "FLOAT",
-     "widget": {
-      "name": "b"
-     },
-     "link": null
     }
    ],
    "outputs": [
     {
-     "name": "model",
+     "name": "MODEL",
      "type": "MODEL",
      "links": [
-      5
+      4
      ],
      "slot_index": 0
-    },
-    {
-     "name": "identity_profile",
-     "type": "PHOTON_IDENTITY_PROFILE",
-     "links": [
-      11
-     ],
-     "slot_index": 1
-    },
-    {
-     "name": "clip",
-     "type": "CLIP",
-     "links": null,
-     "slot_index": 2
     }
    ],
    "properties": {
-    "Node name for S&R": "MossPhotonLoRAProfile"
+    "Node name for S&R": "LoraLoaderModelOnly"
    },
    "widgets_values": [
     "your_character_lora.safetensors",
-    0.8,
-    "character",
-    "constant",
-    "",
-    false,
-    0.0,
-    false,
-    "cached_or_compute",
-    0.3,
-    0.9,
-    0.2,
-    0.6
+    0.8
    ]
   },
   {
@@ -740,22 +494,22 @@
     {
      "name": "model",
      "type": "MODEL",
-     "link": 5
+     "link": 4
     },
     {
      "name": "positive",
      "type": "CONDITIONING",
-     "link": 6
+     "link": 5
     },
     {
      "name": "negative",
      "type": "CONDITIONING",
-     "link": 7
+     "link": 6
     },
     {
      "name": "latent",
      "type": "LATENT",
-     "link": 8
+     "link": 7
     },
     {
      "name": "seed",
@@ -784,17 +538,17 @@
     {
      "name": "identity_profile",
      "type": "PHOTON_IDENTITY_PROFILE",
-     "link": 11
+     "link": null
     },
     {
      "name": "constraints",
      "type": "PHOTON_CONSTRAINTS",
-     "link": 9
+     "link": 8
     },
     {
      "name": "vae",
      "type": "VAE",
-     "link": 10
+     "link": 9
     },
     {
      "name": "preview",
@@ -811,6 +565,14 @@
       "name": "preset_pin"
      },
      "link": null
+    },
+    {
+     "name": "steps",
+     "type": "INT",
+     "widget": {
+      "name": "steps"
+     },
+     "link": null
     }
    ],
    "outputs": [
@@ -818,7 +580,7 @@
      "name": "latent",
      "type": "LATENT",
      "links": [
-      12
+      10
      ],
      "slot_index": 0
     },
@@ -826,7 +588,7 @@
      "name": "report",
      "type": "PHOTON_REPORT",
      "links": [
-      14
+      12
      ],
      "slot_index": 1
     }
@@ -840,7 +602,8 @@
     "turbo_identity",
     0.0,
     true,
-    "turbo_identity@1.0.0#3effb94d"
+    "turbo_identity@1.0.0#8fd885b0",
+    0
    ]
   },
   {
@@ -861,12 +624,12 @@
     {
      "name": "samples",
      "type": "LATENT",
-     "link": 12
+     "link": 10
     },
     {
      "name": "vae",
      "type": "VAE",
-     "link": 13
+     "link": 11
     }
    ],
    "outputs": [
@@ -874,8 +637,8 @@
      "name": "IMAGE",
      "type": "IMAGE",
      "links": [
-      15,
-      16
+      13,
+      14
      ],
      "slot_index": 0
     }
@@ -903,12 +666,12 @@
     {
      "name": "report",
      "type": "PHOTON_REPORT",
-     "link": 14
+     "link": 12
     },
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 15
+     "link": 13
     },
     {
      "name": "reference_images",
@@ -934,7 +697,7 @@
      "name": "report",
      "type": "PHOTON_REPORT",
      "links": [
-      17
+      15
      ],
      "slot_index": 0
     },
@@ -970,12 +733,12 @@
     {
      "name": "image",
      "type": "IMAGE",
-     "link": 16
+     "link": 14
     },
     {
      "name": "report",
      "type": "PHOTON_REPORT",
-     "link": 17
+     "link": 15
     },
     {
      "name": "filename_prefix",
@@ -1048,7 +811,7 @@
    "outputs": [],
    "properties": {},
    "widgets_values": [
-    "ComfyUI 0.42.0 (commit 8f04fd6ec), web frontend 1.55.18, ComfyUI-MossPhoton 0.1.0.\n\nWorkflow: SFT -> LoRA Profile 1 (role distill, 1.0) -> LoRA Profile 2 (role character, profile_in from node 1) -> Sampler preset turbo_identity. Order: distill first, then the character LoRA.\n\nWeights (the workflow downloads nothing: download the files yourself and put them in these folders):\n- models/diffusion_models/moss_image_sft_bf16.safetensors (the official MOSS-Image-SFT bf16 file)\n- models/text_encoders/qwen3.5_9b_bf16.safetensors (the official Qwen3.5 9B bf16 text encoder of MOSS-Image; CLIPLoader type moss_image)\n- models/vae/flux2-vae.safetensors (Flux 2 VAE)\n- models/loras/lodestones-8-steps-dmd2-lora.safetensors (the public lodestones 8-step DMD2 LoRA, distill, sha256 7683fe1f...e6f2; download it and keep this file name)\n- models/loras/your_character_lora.safetensors (PLACEHOLDER name: your character LoRA)\n\nPreset: turbo_identity, catalog status 'candidate' with its OWN gate, not run yet (MP-12 pending). Same sampling as turbo_8step (8 steps, simple, CFG 1, SLG off). Identity under the distill LoRA is unmeasured and no identity score exists in v1.\n\nCharacter strength 0.8 is the example value of the planned parity case C19, not a verified strength. The two orders (distill then character, character then distill) give different results in the last bits and are recorded in the report.\n\nExperimental features: the whole turbo path is experimental (candidate preset, gate not run). Steps 9-16 and CFG above 1.1 are NOT switched on in this graph.\n\nUnproven: DMD2 (trained on Base) on SFT, steps 9-16, CFG above 1.1, identity under distill.\n\nScope: SFT only. Base: not verified in v1 (recognised by hash, no parity or gate run). Calibration stages B-D are not done. If a loader shows 'value not in list', the file is named or placed differently on your machine: open the combo and pick your file. A file in a subfolder of a models folder is listed with a backslash on Windows and a forward slash on Linux."
+    "ComfyUI 0.42.0 (commit 8f04fd6ec), web frontend 1.55.18, ComfyUI-MossPhoton 0.1.0.\n\nWorkflow: SFT -> LoraLoaderModelOnly 1 (the DMD2 distill LoRA, 1.0) -> LoraLoaderModelOnly 2 (the character LoRA) -> Sampler preset turbo_identity. Order: distill first, then the character LoRA.\n\nWeights (the workflow downloads nothing: download the files yourself and put them in these folders):\n- models/diffusion_models/moss_image_sft_bf16.safetensors (the official MOSS-Image-SFT bf16 file)\n- models/text_encoders/qwen3.5_9b_bf16.safetensors (the official Qwen3.5 9B bf16 text encoder of MOSS-Image; CLIPLoader type moss_image)\n- models/vae/flux2-vae.safetensors (Flux 2 VAE)\n- models/loras/lodestones-8-steps-dmd2-lora.safetensors (the public lodestones 8-step DMD2 LoRA, distill, sha256 7683fe1f...e6f2; download it and keep this file name)\n- models/loras/your_character_lora.safetensors (PLACEHOLDER name: your character LoRA)\n\nPreset: turbo_identity, catalog status 'candidate' with its OWN gate, not run yet. Same sampling as turbo_8step (8 steps, simple, CFG 1, SLG off). Identity under the distill LoRA is unmeasured and no identity score exists in v1.\n\nCharacter strength 0.8 is the example value of the planned parity case C19, not a verified strength. The two orders (distill then character, character then distill) give different results in the last bits and are recorded in the report.\n\nExperimental features: the whole turbo path is experimental (candidate preset, gate not run). Steps 9-16 and CFG above 1.1 are NOT switched on in this graph.\n\nUnproven: DMD2 (trained on Base) on SFT, steps 9-16, CFG above 1.1, identity under distill.\n\nScope: SFT only. Base: not verified in v1 (recognised by hash, no parity or gate run). Calibration stages B-D are not done. If a loader shows 'value not in list', the file is named or placed differently on your machine: open the combo and pick your file. A file in a subfolder of a models folder is listed with a backslash on Windows and a forward slash on Linux."
    ],
    "title": "MossPhoton turbo_identity: versions, weights, status (candidate)",
    "color": "#432",
@@ -1082,14 +845,6 @@
   ],
   [
    4,
-   6,
-   1,
-   7,
-   6,
-   "PHOTON_IDENTITY_PROFILE"
-  ],
-  [
-   5,
    7,
    0,
    8,
@@ -1097,7 +852,7 @@
    "MODEL"
   ],
   [
-   6,
+   5,
    5,
    0,
    8,
@@ -1105,7 +860,7 @@
    "CONDITIONING"
   ],
   [
-   7,
+   6,
    5,
    1,
    8,
@@ -1113,7 +868,7 @@
    "CONDITIONING"
   ],
   [
-   8,
+   7,
    4,
    0,
    8,
@@ -1121,7 +876,7 @@
    "LATENT"
   ],
   [
-   9,
+   8,
    5,
    2,
    8,
@@ -1129,7 +884,7 @@
    "PHOTON_CONSTRAINTS"
   ],
   [
-   10,
+   9,
    3,
    0,
    8,
@@ -1137,15 +892,7 @@
    "VAE"
   ],
   [
-   11,
-   7,
-   1,
-   8,
-   7,
-   "PHOTON_IDENTITY_PROFILE"
-  ],
-  [
-   12,
+   10,
    8,
    0,
    9,
@@ -1153,7 +900,7 @@
    "LATENT"
   ],
   [
-   13,
+   11,
    3,
    0,
    9,
@@ -1161,7 +908,7 @@
    "VAE"
   ],
   [
-   14,
+   12,
    8,
    1,
    10,
@@ -1169,7 +916,7 @@
    "PHOTON_REPORT"
   ],
   [
-   15,
+   13,
    9,
    0,
    10,
@@ -1177,7 +924,7 @@
    "IMAGE"
   ],
   [
-   16,
+   14,
    9,
    0,
    11,
@@ -1185,7 +932,7 @@
    "IMAGE"
   ],
   [
-   17,
+   15,
    10,
    0,
    11,

@@ -22,7 +22,7 @@ import dataclasses
 from . import errors, phase
 
 __all__ = ["ATTACH_PHASE_LORA", "PhaseAdapter", "attach_adapter", "adapter_of", "check_adapter", "make_level_model",
-           "run_segments"]
+           "demote_in_place", "demote_to_constant", "Carrier", "resume_sampler", "global_steps", "run_segments"]
 
 ATTACH_PHASE_LORA = "moss_photon.phase_lora"   # ModelPatcher attachment key of the phased adapter
 
@@ -40,6 +40,7 @@ class PhaseAdapter:
     patch_dict: dict
     metadata: object
     patch_entries: int
+    strength_model: object = None   # the node's ``strength_model`` widget (ignored while phased): what a demotion runs at
 
 
 def attach_adapter(model, adapter):
@@ -71,26 +72,45 @@ def check_adapter(adapter, entry, plan, *, node):
     return []
 
 
-def make_level_model(model, adapter, weight):
+def make_level_model(model, adapter, weight, prepare=None):
     """A DIRECT clone of ``model`` with the phased LoRA added at ``weight``; ``model`` is not modified.
 
     The same two calls as ``lora.apply_patches`` makes for a constant weight, so a level equals the constant run of that
-    weight bit for bit.
+    weight bit for bit. ``prepare(level)`` (the sampler's LoRA Phase entries, MP-84) runs on the clone BEFORE the adapter is
+    added: the patches go onto the one clone, never onto a throwaway clone this one is cloned from.
     """
     level = model.clone()
+    if prepare is not None:
+        prepare(level)
     level.add_patches(adapter.patch_dict, float(weight))
     if adapter.metadata:
         level.set_attachments("lora_metadata", adapter.metadata)
     return level
 
 
-class _Carrier:
+def demote_in_place(clone, adapter, strength):
+    """``clone`` (a clone the caller owns) without the phased adapter and with its LoRA added at the constant ``strength``.
+    The same two calls as ``lora.apply_patches``. Returns ``clone``."""
+    clone.remove_attachments(ATTACH_PHASE_LORA)
+    clone.add_patches(adapter.patch_dict, float(strength))
+    if adapter.metadata:
+        clone.set_attachments("lora_metadata", adapter.metadata)
+    return clone
+
+
+def demote_to_constant(model, adapter, strength):
+    """A DIRECT clone of ``model`` without the phased adapter and with its LoRA added at the constant ``strength`` (MP-73:
+    the chain's phased profile moved to another LoRA). ``model`` is not modified."""
+    return demote_in_place(model.clone(), adapter, strength)
+
+
+class Carrier:
     """The raw latent ``x`` at the end of the previous segment (before ComfyUI's ``inverse_noise_scaling``)."""
 
     x = None
 
 
-def _resume_sampler(real, carrier):
+def resume_sampler(real, carrier):
     """A ``KSAMPLER`` that runs ``real``'s sampler function but starts every segment after the first from the carried
     ``x`` instead of the freshly noise-scaled one, and remembers the segment's result."""
     import comfy.samplers
@@ -104,7 +124,7 @@ def _resume_sampler(real, carrier):
     return comfy.samplers.KSAMPLER(sample, real.extra_options, real.inpaint_options)
 
 
-def _global_steps(callback, first, total):
+def global_steps(callback, first, total):
     """``callback(step, x0, x, total)`` with the step and total of the whole run instead of the segment's."""
     if callback is None:
         return None
@@ -115,7 +135,7 @@ def _global_steps(callback, first, total):
 
 
 def run_segments(schedule, model, adapter, *, make_clone, make_guider, sampler, noise, latent_image, sigmas, callback,
-                 disable_pbar, seed, poll):
+                 disable_pbar, seed, poll, prepare=None):
     """Sample ``sigmas`` segment by segment; returns ``(samples, clones_built)``.
 
     ``schedule`` is a ``phase.StepSchedule`` for exactly these sigmas. For each segment: ``make_clone(level_model)`` turns
@@ -130,22 +150,25 @@ def run_segments(schedule, model, adapter, *, make_clone, make_guider, sampler, 
             "the phase schedule has %d segments for %d levels" % (len(schedule.segments), schedule.plan.levels),
             "report this: the weight steps are not monotone", severity="error")])
     total = len(schedule.applied)
-    carrier = _Carrier()
-    resume = _resume_sampler(sampler, carrier)
+    carrier = Carrier()
+    resume = resume_sampler(sampler, carrier)
     samples, built = None, 0
     try:
         for seg in schedule.segments:
             poll()
-            clone = guider = None
+            clone = guider = level = None
             try:
-                clone = make_clone(make_level_model(model, adapter, seg.weight))
+                level = (make_level_model(model, adapter, seg.weight) if prepare is None
+                         else make_level_model(model, adapter, seg.weight, prepare=prepare))
+                clone = make_clone(level)
+                level = None
                 built += 1
                 guider = make_guider(clone)
                 samples = guider.sample(noise, latent_image.clone(), resume, sigmas[seg.first:seg.stop + 1],
-                                        callback=_global_steps(callback, seg.first, total),
+                                        callback=global_steps(callback, seg.first, total),
                                         disable_pbar=disable_pbar, seed=seed)
             finally:
-                clone = guider = None
+                clone = guider = level = None
     finally:
         carrier.x = None
     return samples, built

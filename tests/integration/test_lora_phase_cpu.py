@@ -397,20 +397,23 @@ class InvariantETest(PhaseCpuBase):
 
 
 class InvariantFGTest(PhaseCpuBase):
-    def test_only_the_advanced_node_accepts_a_phased_profile(self):
+    def test_only_the_advanced_node_phases_a_phased_profile(self):
+        """MP-84: the basic sampler no longer refuses it (``unsupported_feature``): it runs the adapter constant at its
+        nominal strength, with the warning ``phased_lora_demoted``, and builds no level clone."""
         from moss_photon.nodes import sampler
         tiny = self.tiny
         m, p, _ = self.phased()
         made = []
         real = self.lora_phase.make_level_model
         with mock.patch.object(self.lora_phase, "make_level_model", lambda *a: made.append(a) or real(*a)):
-            with self.assertRaises(self.errors.UnsupportedFeature) as ctx:
-                sampler.MossPhotonSampler().sample(
-                    m, tiny.make_cond(23), tiny.make_cond(9), {"samples": tiny.latent.clone()}, tiny_moss.SEED,
-                    "reference", 0.0, identity_profile=p, preview=False)
-            self.assertEqual(made, [], "refused before any clone was built")
-            self.assertIn("MossPhotonSamplerAdvanced", str(ctx.exception))
-            self.assertEqual(ctx.exception.issue.node, "MossPhotonSampler")
+            simple = sampler.MossPhotonSampler().sample(
+                m, tiny.make_cond(23), tiny.make_cond(9), {"samples": tiny.latent.clone()}, tiny_moss.SEED,
+                "reference", 0.0, identity_profile=p, preview=False, steps=STEPS)
+            self.assertEqual(made, [], "no level clone was built: the weight does not move")
+            demoted = [w for w in simple["result"][1]["warnings"] if w["code"] == "phased_lora_demoted"]
+            self.assertEqual([w["severity"] for w in demoted], ["warning"])
+            self.assertIn("MossPhotonSamplerAdvanced", demoted[0]["message"] + demoted[0]["fix"])
+            self.assertNotIn("phase", simple["result"][1]["lora"])
             out = sampler.MossPhotonSamplerAdvanced().sample(
                 m, tiny.make_cond(23), tiny.make_cond(9), {"samples": tiny.latent.clone()}, tiny_moss.SEED,
                 "reference", 0.0, STEPS, "from_preset", "", -1.0, -1.0, "euler", "constant", "native", 0,
@@ -419,17 +422,17 @@ class InvariantFGTest(PhaseCpuBase):
         self.assertEqual(report["label"]["parity_class"], "not_reference")
         self.assertTrue(made)
 
-    def test_a_turbo_preset_with_a_phased_character_lora_is_allowed_only_in_advanced(self):
+    def test_a_turbo_preset_with_a_phased_character_lora_is_phased_only_in_advanced(self):
         from moss_photon.nodes import sampler
         tiny = self.tiny
         d_model, d_profile, _ = self.node(self.patcher, "D.safetensors", role="distill", strength_model=1.0)
         m, p, _ = self.phased(d_model, role="character", profile_in=d_profile)
         with ss.known_sft():
-            with self.assertRaises(self.errors.UnsupportedFeature) as ctx:
-                sampler.MossPhotonSampler().sample(
-                    m, tiny.make_cond(23), tiny.make_cond(9), {"samples": tiny.latent.clone()}, tiny_moss.SEED,
-                    "turbo_identity", 0.0, identity_profile=p, preview=False)
-            self.assertIn("MossPhotonSamplerAdvanced", str(ctx.exception))
+            simple = sampler.MossPhotonSampler().sample(
+                m, tiny.make_cond(23), tiny.make_cond(9), {"samples": tiny.latent.clone()}, tiny_moss.SEED,
+                "turbo_identity", 0.0, identity_profile=p, preview=False)["result"][1]
+            self.assertIn("phased_lora_demoted", [w["code"] for w in simple["warnings"]])
+            self.assertNotIn("lora_phased", simple["label"]["not_reference_reasons"])
             report = ss.run(tiny, model=m, identity_profile=p, preset_id="turbo_identity", cfg=1.0, node_id=ADV,
                             allow_phased_lora=True).report
         self.assertIn("lora_phased", report["label"]["not_reference_reasons"])
@@ -495,10 +498,14 @@ class ContractTest(PhaseCpuBase):
         with self.assertRaises(self.errors.IncompatibleLora):
             self.run_adv(stripped, p)
 
-    def test_a_second_phased_adapter_in_one_chain_is_refused_and_a_constant_one_after_it_works(self):
+    def test_a_second_phased_request_in_one_chain_runs_constant_and_a_constant_one_after_it_works(self):
         m, p, _ = self.phased()
-        with self.assertRaises(self.errors.UnsupportedFeature):
-            self.phased(m, name="D.safetensors", profile_in=p)
+        # MP-73: was unsupported_feature; the first phased character LoRA keeps the profile, the request runs constant
+        m1, p1, _ = self.phased(m, name="D.safetensors", profile_in=p, strength_model=0.5)
+        self.assertEqual(p1["phase_plan"], p["phase_plan"])
+        self.assertEqual([e["weight_profile"]["kind"] for e in p1["stack"]], ["phased", "constant"])
+        self.assertEqual(p1["stack"][1]["strength_model"], 0.5)
+        self.assertIn("phased_lora_demoted", [w["code"] for w in p1["stack"][1]["warnings"]])
         m2, p2, _ = self.node(m, "D.safetensors", strength_model=0.5, profile_in=p, role="style")
         self.assertEqual(p2["phase_plan"], p["phase_plan"])
         self.assertEqual(self.lora_phase.adapter_of(m2).stack_index, 0)

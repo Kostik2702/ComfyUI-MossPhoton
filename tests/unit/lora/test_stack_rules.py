@@ -35,12 +35,12 @@ class StackRulesTest(unittest.TestCase):
         stack = [entry(0, "style", "a.safetensors", SHA_A), entry(1, "style", "b.safetensors", SHA_B)]
         self.assertEqual(lora.check_stack(stack), [])
 
-    def test_second_distill_is_incompatible_lora_error(self):
+    def test_second_distill_is_a_warning(self):
+        """MP-84: a setting conflict degrades; it was an ``incompatible_lora`` error ("use one at a time")."""
         stack = [entry(0, "distill", "a.safetensors", SHA_A, 1.0), entry(1, "distill", "b.safetensors", SHA_B, 1.0)]
         got = lora.check_stack(stack)
-        self.assertEqual(codes(got), [("incompatible_lora", "error", 1)])
-        with self.assertRaises(errors.IncompatibleLora):
-            errors.raise_first_error(got)
+        self.assertEqual(codes(got), [("multiple_distill_loras", "warning", 1)])
+        self.assertIsNone(errors.raise_first_error(got))
 
     def test_strength_outside_the_sidecar_range_warns_only_for_that_entry(self):
         vs = {"min": 0.6, "max": 0.9, "recommended": 0.8}

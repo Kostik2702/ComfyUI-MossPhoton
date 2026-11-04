@@ -30,8 +30,8 @@
     "forbidden_changes": false
   },
   "prompt_sha256": {
-    "positive": "0000000000000000000000000000000000000000000000000000000000000000",
-    "negative": "0000000000000000000000000000000000000000000000000000000000000000"
+    "positive": "5ef22ae0bac6ab3cfde022eea6d79cfb08afec288a2801867c0eb0156fec7da3",
+    "negative": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "layout": null,
   "conflicts": [],
@@ -42,5 +42,6 @@
     "sha256": null,
     "official": null,
     "fingerprint_source": "unavailable"
-  }
+  },
+  "conditioning": null
 }

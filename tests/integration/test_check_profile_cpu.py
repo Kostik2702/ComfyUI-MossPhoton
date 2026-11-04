@@ -13,8 +13,8 @@ class CheckProfileCpuTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tiny = tiny_moss.build_tiny_moss()
-        from moss_photon.core import adapter, errors, solver
-        cls.adapter, cls.errors, cls.solver = adapter, errors, solver
+        from moss_photon.core import adapter, canon, errors, solver
+        cls.adapter, cls.canon, cls.errors, cls.solver = adapter, canon, errors, solver
         cls.base = cls.tiny.patcher
         cls.chain = ss.apply_lora(cls.base, ss.make_lora_dict(cls.base, seed=11), 0.8)
         cls.profile = ss.make_profile(cls.chain, base_model=cls.base, strength=0.8)
@@ -90,7 +90,7 @@ class CheckProfileCpuTest(unittest.TestCase):
         for name, model in (("auraflow", aura), ("slg", slg), ("plain clone", self.chain.clone())):
             with self.subTest(clone=name):
                 facts = self.adapter.probe_model(model, reference_dtypes=ss.F32)
-                check = self.solver.check_profile(self.profile, facts, False, node="MossPhotonSampler")
+                check = self.solver.check_profile(self.profile, facts, node="MossPhotonSampler")
                 self.assertEqual((list(check.issues), check.foreign, check.has_lora), ([], False, True))
 
     def test_a_native_loader_after_an_auraflow_clone_is_still_seen(self):
@@ -98,12 +98,12 @@ class CheckProfileCpuTest(unittest.TestCase):
         aura = ModelSamplingAuraFlow().patch_aura(self.chain, 5.0)[0]
         after = ss.apply_lora(aura, ss.make_lora_dict(self.base, seed=17), 1.0)
         facts = self.adapter.probe_model(after, reference_dtypes=ss.F32)
-        self.assertTrue(self.solver.check_profile(self.profile, facts, False, node="MossPhotonSampler").foreign)
+        self.assertTrue(self.solver.check_profile(self.profile, facts, node="MossPhotonSampler").foreign)
 
-    def test_identity_safe_needs_a_character_in_the_stack(self):
+    def test_identity_safe_expects_a_character_in_the_stack_and_only_says_so(self):
+        """MP-84: a role is never required: the stack without a character runs with the note ``lora_not_recorded``."""
         style = ss.make_profile(self.chain, base_model=self.base, role="style", strength=0.8)
-        with self.assertRaises(self.errors.MissingLora):
-            self.label(self.chain, style, preset_id="identity_safe")
+        self.assertIn("lora_not_recorded", ss.codes(self.label(self.chain, style, preset_id="identity_safe")))
         ok = ss.make_profile(self.chain, base_model=self.base, role="character", strength=0.8)
         report = self.label(self.chain, ok, preset_id="identity_safe")
         self.assertEqual(report["lora"]["stack"][0]["role"], "character")
@@ -113,17 +113,18 @@ class CheckProfileCpuTest(unittest.TestCase):
         profile = ss.make_profile(self.chain, base_model=self.base, strength=0.8)
         profile["stack"][0]["trigger_hints"] = ["zkq_secret_token"]
         profile["stack"][0]["trigger_present"] = True
-        constraints = ss.read_contract("constraints.json")
+        constraints = ss.bound_constraints(self.tiny)
         without = self.label(self.chain, profile)
         self.assertNotIn("trigger_not_in_prompt", ss.codes(without))
         report = self.label(self.chain, profile, constraints=constraints)
         self.assertIn("trigger_not_in_prompt", ss.codes(report))
         self.assertNotIn("zkq_secret_token", repr(report))
         constraints["compiled_positive"] += " zkq_secret_token"
+        constraints["prompt_sha256"]["positive"] = self.canon.sha256_hex(constraints["compiled_positive"])
         self.assertNotIn("trigger_not_in_prompt", ss.codes(self.label(self.chain, profile, constraints=constraints)))
 
     def test_the_report_never_carries_prompts(self):
-        constraints = ss.read_contract("constraints.json")
+        constraints = ss.bound_constraints(self.tiny)
         report = self.label(self.chain, self.profile, constraints=constraints)
         text = repr(report)
         for private in ("A woman in a kitchen", "red wool sweater", "small kitchen"):

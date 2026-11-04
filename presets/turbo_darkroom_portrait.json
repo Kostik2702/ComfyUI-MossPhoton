@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "preset_version": "1.0.0",
+  "id": "turbo_darkroom_portrait",
+  "status": "candidate",
+  "description": "Darkroom phases (compose, commit, finish), portrait values: 12 steps, guidance 1.0 until the face locks, the identity LoRA weight 1.0 -> 1.35 over the commit window, guidance 2.0 with the negative prompt in the finish. No LoRA is required. Experimental.",
+  "model_families": [
+    "moss-image-sft"
+  ],
+  "checkpoint_policy": "native-moss-only",
+  "sampling": {
+    "steps": 12,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "shift": 5.0,
+    "cfg": 1.0,
+    "slg_mode": "off",
+    "slg_layers": [],
+    "slg_start": 0.0,
+    "slg_end": 1.0,
+    "restart": false,
+    "ancestral_noise": false,
+    "override_bounds": {
+      "steps": {
+        "min": 8,
+        "max": 16,
+        "verified_min": 12,
+        "verified_max": 12,
+        "source": {
+          "unit": "Euler steps",
+          "kind": "owner_practice",
+          "source": "the maintainers' recipe runs 12 steps; 8 is the sa2_8 schedule of their earlier turbo-phase test; other counts in 9-16 have no source"
+        }
+      },
+      "cfg": {
+        "min": 1.0,
+        "max": 2.0,
+        "verified_min": 1.0,
+        "verified_max": 1.1,
+        "source": {
+          "unit": "dimensionless guidance scale of the compose and commit phases",
+          "kind": "owner_practice",
+          "source": "compose guidance stays 1.0 (card CFG 1, Kromoss README line 140); above 1.1 has no card source; range as turbo_identity. The finish guidance is darkroom.finish.cfg"
+        }
+      }
+    }
+  },
+  "darkroom": {
+    "schedule": "native",
+    "compose": {
+      "cfg": 1.0,
+      "slg": false
+    },
+    "commit": {
+      "r_c": 0.06,
+      "r_k": 0.17,
+      "w_compose": 1.0,
+      "w_commit": 1.35
+    },
+    "reexpose": {
+      "enabled": false,
+      "sigma_r": 0.8
+    },
+    "finish": {
+      "r_f": 0.17,
+      "cfg": 2.0,
+      "eta": 0.0,
+      "switch": false
+    }
+  },
+  "lora_policy": "use_explicit_user_profile_or_none",
+  "constraints": [
+    {
+      "id": "recommends_reference_photos",
+      "kind": "recommends_input",
+      "severity": "info",
+      "reason": "none",
+      "input": "reference_photos"
+    }
+  ],
+  "guards": [
+    {
+      "id": "identity_score",
+      "required": false,
+      "requires_dependency": "insightface",
+      "implemented_in": "second_queue"
+    }
+  ],
+  "postprocess": [],
+  "budget": {
+    "nominal_steps": 12,
+    "extra_forwards": 0,
+    "max_forwards": 32
+  },
+  "fallback": "error_on_incompatibility",
+  "calibration": {
+    "reference": "none: darkroom phases have no native-graph equivalent (experimental); values from the maintainers' own runs",
+    "manifest": null,
+    "state": "uncalibrated"
+  },
+  "ui": {
+    "group": "Candidate",
+    "recommended_final": false,
+    "label": "candidate",
+    "summary": "Darkroom phases, portrait values: 12 steps, identity LoRA weight boost, finish guidance 2.0. LoRAs optional. Experimental."
+  },
+  "sources": {
+    "sampling.steps": {
+      "unit": "Euler steps",
+      "kind": "owner_practice",
+      "source": "the maintainers' recipe darkroom_turbo_portrait (12 steps); the maintainers looked at its output 2026-10-25"
+    },
+    "sampling.shift": {
+      "unit": "dimensionless",
+      "kind": "vendor_doc",
+      "source": "Kromoss README line 141 (Shift 5); native model shift 5.0 (comfy/supported_models.py:2042-2045)"
+    },
+    "sampling.cfg": {
+      "unit": "dimensionless",
+      "kind": "vendor_doc",
+      "source": "Kromoss README line 140 (CFG 1) for the compose and commit phases; comfy/samplers.py:610-612 drops the uncond branch at cfg 1"
+    },
+    "sampling.slg_start": {
+      "unit": "fraction",
+      "kind": "vendor_doc",
+      "source": "SLG off, window kept at the schema default 0..1: nodes_slg.py:149 makes SLG a no-op when uncond is None"
+    },
+    "sampling.slg_end": {
+      "unit": "fraction",
+      "kind": "vendor_doc",
+      "source": "SLG off, window kept at the schema default 0..1 (inert while slg_mode is off)"
+    },
+    "budget.nominal_steps": {
+      "unit": "Euler steps",
+      "kind": "derived",
+      "source": "equals sampling.steps"
+    },
+    "budget.extra_forwards": {
+      "unit": "model forwards",
+      "kind": "derived",
+      "source": "no corrections, restart or detailer in v1 (SPEC 5, 6.1)"
+    },
+    "budget.max_forwards": {
+      "unit": "model forwards",
+      "kind": "derived",
+      "source": "override_bounds corner 16 steps x 2 branches (cfg > 1) = 32; the darkroom plan counts its own branches (1 until the finish, 2 in it)"
+    },
+    "darkroom.compose.cfg": {
+      "unit": "dimensionless guidance scale",
+      "kind": "derived",
+      "source": "equals sampling.cfg; compose and commit run one forward per step (compose phase of the maintainers' recipe)"
+    },
+    "darkroom.commit.r_c": {
+      "unit": "sigma progress r = (sigma_0 - sigma) / (sigma_0 - sigma_last)",
+      "kind": "owner_practice",
+      "source": "the maintainers' recipe darkroom_turbo_portrait@1: compose ends at r 0.06"
+    },
+    "darkroom.commit.r_k": {
+      "unit": "sigma progress",
+      "kind": "owner_practice",
+      "source": "the maintainers' recipe darkroom_turbo_portrait@1: the face is locked at r 0.17; commit ends there"
+    },
+    "darkroom.commit.w_compose": {
+      "unit": "character LoRA weight",
+      "kind": "owner_practice",
+      "source": "the maintainers' recipe darkroom_turbo_portrait@1: the nominal weight of the profile's character LoRA"
+    },
+    "darkroom.commit.w_commit": {
+      "unit": "character LoRA weight",
+      "kind": "owner_practice",
+      "source": "the maintainers' calibration: P1 paired dSim +0.022 [+0.012,+0.032] over 3 seeds vs 1.2, texture within noise"
+    },
+    "darkroom.reexpose.sigma_r": {
+      "unit": "sigma",
+      "kind": "owner_practice",
+      "source": "the maintainers' runs: re-expose to sigma 0.8; off in this preset because it smoothed the result on MOSS"
+    },
+    "darkroom.finish.r_f": {
+      "unit": "sigma progress",
+      "kind": "owner_practice",
+      "source": "the maintainers' recipe darkroom_turbo_portrait@1: the finish (negative prompt) starts at r 0.17, where the face is locked"
+    },
+    "darkroom.finish.cfg": {
+      "unit": "dimensionless guidance scale",
+      "kind": "owner_practice",
+      "source": "the maintainers' measurements (cfg 2 with the negative prompt gave the texture); the maintainers looked at the output of their recipe with it 2026-10-25; two branches per step from r_f on"
+    },
+    "darkroom.finish.eta": {
+      "unit": "dimensionless noise injection",
+      "kind": "owner_practice",
+      "source": "the maintainers' recipe darkroom_turbo_portrait@1: 0 (no noise injection in the finish)"
+    }
+  }
+}

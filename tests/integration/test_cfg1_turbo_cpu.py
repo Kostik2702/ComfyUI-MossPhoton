@@ -107,10 +107,14 @@ class TurboTest(unittest.TestCase):
         reference = self.torch.tensor(self.tiny.sigmas.tolist())
         self.assertNotEqual(self.sigma.sigma_hash(self.simple8), self.sigma.sigma_hash(reference))
 
-    def test_the_default_cfg_widget_of_3_is_refused_by_the_turbo_bounds(self):
-        with self.assertRaises(self.errors.InvalidOverride) as cm:
-            self.turbo(cfg=3.0)
-        self.assertIn("cfg", str(cm.exception))
+    def test_the_default_cfg_widget_of_3_runs_outside_the_turbo_bounds_with_a_warning(self):
+        """MP-84: it was ``invalid_override``; a value outside the bounds runs as given and the report says so."""
+        with ss.NoSample():
+            result = self.turbo(cfg=3.0)
+        hit = [w for w in result.report["warnings"] if w["code"] == "override_outside_bounds"]
+        self.assertEqual([(w["param"], w["severity"]) for w in hit], [("cfg", "warning")])
+        self.assertEqual(result.report["sampling"]["cfg"], 3.0)
+        self.assertEqual(result.report["forwards"]["expected_branch_forwards"], 16)
 
     def node_sample(self, cfg, preset="turbo_8step"):
         """The simple node, the way ComfyUI calls it, with the distill chain."""
@@ -136,9 +140,10 @@ class TurboTest(unittest.TestCase):
         self.assertIn("cfg 1 from the preset", out["ui"]["text"][0])
         self.assertNotIn("turbo_setting_outside_verified", ss.codes(report))
 
-    def test_an_explicit_cfg_of_3_on_turbo_is_still_refused(self):
-        with self.assertRaises(self.errors.InvalidOverride):
-            self.node_sample(3.0)
+    def test_an_explicit_cfg_of_3_on_turbo_runs_with_a_warning(self):
+        report = self.node_sample(3.0)["result"][1]
+        self.assertIn("override_outside_bounds", ss.codes(report))
+        self.assertEqual(report["sampling"]["cfg"], 3.0)
 
     def test_an_explicit_cfg_inside_the_bounds_is_an_override_with_a_diff(self):
         report = self.node_sample(1.5)["result"][1]
@@ -150,13 +155,13 @@ class TurboTest(unittest.TestCase):
         report = self.node_sample(1.0)["result"][1]
         self.assertEqual((report["label"]["customized"], report["preset"]["diff"]), (False, []))
 
-    def test_turbo_without_a_distill_lora_stops_before_any_forward(self):
-        model = self.tiny.patcher.clone()
-        stats = self.solver.ForwardStats()
-        self.solver.install_counter(model, stats)
-        with self.assertRaises(self.errors.MissingLora):
-            ss.run(self.tiny, model=model, preset_id="turbo_8step", cfg=1.0)
-        self.assertEqual(stats.calls, 0)
+    def test_turbo_without_a_distill_lora_runs_with_a_note(self):
+        """MP-84: a role is never required (a merged turbo checkpoint has no LoRA); the preset decides that the run is turbo."""
+        with ss.known_sft():
+            result = ss.run(self.tiny, preset_id="turbo_8step", cfg=1.0)
+        self.assertIn("lora_not_recorded", ss.codes(result.report))
+        self.assertEqual(result.report["forwards"]["sample_forwards"], 8)
+        self.assertEqual(result.report["label"]["parity_class"], "native_turbo")
 
     def test_outside_the_verified_range_warns_and_forwards_follow(self):
         tiny = self.tiny
@@ -173,9 +178,12 @@ class TurboTest(unittest.TestCase):
                              cfg=1.5, scheduler="simple")
         self.assertTrue(self.torch.equal(result.latent["samples"], stock))
 
-    def test_the_budget_cap_of_the_preset_holds(self):
-        with self.assertRaises(self.errors.BudgetExceeded):
-            self.turbo(max_forwards=7)
+    def test_the_budget_cap_is_a_warning_and_the_run_goes_on(self):
+        result = self.turbo(max_forwards=7)
+        hit = [w for w in result.report["warnings"] if w["code"] == "forward_budget_exceeded"]
+        self.assertEqual([w["detail"]["limit"] for w in hit], [7])
+        self.assertEqual(result.report["forwards"]["sample_forwards"], 8)
+        self.assertTrue(result.report["forwards"]["match"])
 
     def test_custom_sigmas_break_native_turbo(self):
         result = self.turbo(sigmas=[1.0, 0.7, 0.3, 0.0])
@@ -195,13 +203,17 @@ class TurboTest(unittest.TestCase):
         self.assertEqual([s["role"] for s in result.report["lora"]["stack"]], ["distill", "character"])
         self.assertEqual(result.report["preset"]["id"], "turbo_identity")
 
-    def test_turbo_identity_without_the_character_lora(self):
-        with self.assertRaises(self.errors.MissingLora):
-            self.turbo("turbo_identity")
+    def test_turbo_identity_without_the_character_lora_notes_it(self):
+        with ss.NoSample():
+            result = self.turbo("turbo_identity")
+        notes = [w for w in result.report["warnings"] if w["code"] == "lora_not_recorded"]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("role=character", notes[0]["fix"])
 
-    def test_a_distill_lora_in_a_reference_preset_is_incompatible(self):
-        with self.assertRaises(self.errors.IncompatibleLora):
-            self.turbo("reference", cfg=3.0)
+    def test_a_distill_lora_in_a_reference_preset_is_a_warning(self):
+        with ss.NoSample():
+            result = self.turbo("reference", cfg=3.0)
+        self.assertIn("distill_lora_non_turbo", ss.codes(result.report))
 
     def test_advanced_with_a_distill_lora_warns_and_ignores_slg_at_cfg1(self):
         with ss.NoSample():

@@ -5,7 +5,7 @@ Leaf module: no imports at all (design 7.3). ``REASON_CODES`` lives in ``errors.
 
 PACK_NAME = "ComfyUI-MossPhoton"
 # A unit test asserts equality with pyproject.toml.
-PACK_VERSION = "0.2.0"
+PACK_VERSION = "0.3.0"
 
 REPORT_SCHEMA = 1
 PRESET_SCHEMA = 1
@@ -13,6 +13,9 @@ SCHEDULE_INFO_SCHEMA = 1
 CONSTRAINTS_SCHEMA = 1
 IDENTITY_PROFILE_SCHEMA = 1
 COMPILER_VERSION = 1
+
+# Upper bound of every guidance (cfg) widget and of schema sampling.cfg / darkroom.*.cfg.
+CFG_MAX = 30.0
 
 # The eight stable node IDs, SPEC 4.1 order.
 NODE_IDS = (
@@ -26,13 +29,34 @@ NODE_IDS = (
     "MossPhotonSaveImage",
 )
 
+# Second-queue nodes (SPEC 4.2); NODE_IDS stays the eight of SPEC 4.1.
+NODE_IDS_SECOND_QUEUE = (
+    "MossPhotonIdentityDetailer",
+)
+
+# Nodes outside SPEC 4.1 / 4.2 (v2): MossPhotonLoRAPhase (LoRA plan by sampling phase, MP-84) and the prompt-enhancer
+# splitter, which only reshapes text for MossPhotonPromptLayout.
+NODE_IDS_HELPERS = (
+    "MossPhotonLoRAPhase",
+    "MossPhotonPromptSplit",
+)
+
+# MossPhotonLoRAPhase phases. The one list: core/lora_plan.py maps every entry to the darkroom phases, the node offers it
+# as a combo, the report schema and the schema fixture are cross-checked against it.
+LORA_PHASES = ("all", "composition", "identity", "texture", "composition+identity")
+
 CAT_SETUP = "MossPhoton/1 Setup"
 CAT_SAMPLING = "MossPhoton/2 Sampling"
 CAT_DIAGNOSTICS = "MossPhoton/3 Diagnostics"
 CAT_OUTPUT = "MossPhoton/4 Output"
+CAT_FINISHING = "MossPhoton/5 Finishing"
 
 # ModelPatcher attachment key (design 7.2, rows MP-10).
 ATTACH_LORA_STACK = "moss_photon.lora_stack"
+
+# ModelPatcher ``model_options`` key of the LoRA Phase plan (MP-84, core/lora_plan.py). It lives in consts because the adapter
+# must not count it as a foreign modifier of the MODEL (a plan patches nothing).
+LORA_PLAN_KEY = "moss_photon_lora_plan"
 
 # SPEC 6.1 order.
 PRESET_IDS = (
@@ -46,10 +70,13 @@ PRESET_IDS = (
     "advanced",
 )
 
-# Turbo presets (docs/03-turbo.md A1); PRESET_IDS stays the 8 of SPEC 6.1.
+# Turbo presets (docs/03-turbo.md A1); PRESET_IDS stays the 8 of SPEC 6.1. The last two carry a ``darkroom`` block (MP-71):
+# the phase engine of core/darkroom.py runs them inside MossPhotonSampler / MossPhotonSamplerAdvanced.
 TURBO_PRESET_IDS = (
     "turbo_8step",
     "turbo_identity",
+    "turbo_darkroom_portrait",
+    "turbo_darkroom_fullbody",
 )
 
 # The only weight dtype of the verified reference; CPU tests override it per call.

@@ -9,7 +9,8 @@
 //
 // Pin policy: an empty pin is filled. A pin that is exactly the installed pin of some preset is the value this
 // script (or a previous session of it) wrote, so it follows the combo. Any other non-empty pin was typed by the
-// user: it is never changed, a mismatch with the selected preset is shown in the panel instead.
+// user: it is never changed, except that a pin of the selected preset with the installed version and another sha8 is
+// refreshed to the installed pin (MP-76); a mismatch with the selected preset is shown in the panel instead.
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -46,6 +47,25 @@ export const READ_FIELDS = [
     "requirements[].severity",
     "warnings[].message",
 ];
+// Darkroom presets only (MP-71): payload.darkroom carries these (checked by the same test against the presets that have a
+// block). On such a preset the cfg widget is the FINISH guidance: the route puts the override into darkroom.finish.cfg.
+export const DARKROOM_FIELDS = [
+    "darkroom.compose.cfg",
+    "darkroom.commit.r_c",
+    "darkroom.commit.r_k",
+    "darkroom.commit.w_compose",
+    "darkroom.commit.w_commit",
+    "darkroom.finish.r_f",
+    "darkroom.finish.cfg",
+];
+// The Advanced darkroom knobs the panel sends to the route (widget names; tests/unit/web compares this literal with
+// core/routes.py DARKROOM_PARAMS).
+export const DARKROOM_KNOBS = [
+    "schedule", "compose_cfg", "compose_slg", "r_c", "r_k", "w_compose", "w_commit", "reexpose", "sigma_r", "r_f",
+    "finish_cfg", "eta", "switch_model",
+];
+const DARKROOM_COMBOS = ["compose_slg", "reexpose", "switch_model"];
+const DARKROOM_GUIDANCE = ["compose_cfg", "finish_cfg"];
 // Extra requirement fields by kind (read only for that kind).
 export const REQUIREMENT_FIELDS = {
     requires_lora_role: "role",
@@ -90,6 +110,14 @@ export function overridesQuery(values, sigmasLinked) {
     if (String(values.slg_layers ?? "").trim() !== "") q.set("slg_layers", String(values.slg_layers));
     if (Number(values.slg_start) >= 0) q.set("slg_start", String(values.slg_start));
     if (Number(values.slg_end) >= 0) q.set("slg_end", String(values.slg_end));
+    // the Advanced darkroom knobs (MP-71), same sentinels as nodes/sampler.py: from_preset, 0 for the two guidance knobs, a
+    // negative number for the rest
+    for (const n of DARKROOM_KNOBS) {
+        const v = values[n];
+        if (v === undefined || v === null) continue;
+        if (DARKROOM_COMBOS.includes(n) ? v !== "from_preset" : n === "schedule" ? v !== "from_preset"
+            : DARKROOM_GUIDANCE.includes(n) ? Number(v) > 0 : Number(v) >= 0) q.set(n, String(v));
+    }
     return q.toString();
 }
 
@@ -121,18 +149,19 @@ function pinLine(pinNote) {
     const t = {
         filled: `preset_pin filled: ${pinNote.pin}`,
         moved: `preset_pin moved ${pinNote.from} -> ${pinNote.pin}`,
+        refreshed: `preset_pin refreshed ${pinNote.from} -> ${pinNote.pin} (same version, the preset content changed)`,
         mismatch: `preset_pin ${pinNote.pin} is for ${pinNote.pinId}, preset is ${pinNote.presetId}: not changed, `
-            + "the run will stop with preset_version_mismatch",
+            + "the installed preset will run (warning preset_pin_mismatch)",
         older: `preset_pin ${pinNote.pin} differs from installed ${pinNote.installed}: not changed, `
-            + "the run will stop with preset_version_mismatch",
+            + "the installed preset will run (warning preset_pin_mismatch)",
         malformed: `preset_pin ${pinNote.pin} is malformed: not changed`,
     }[pinNote.kind];
     if (!t) return null;
-    return { text: t, tone: pinNote.kind === "filled" || pinNote.kind === "moved" ? "" : "error" };
+    return { text: t, tone: ["filled", "moved", "refreshed"].includes(pinNote.kind) ? "" : "warn" };
 }
 
 // Lines of the panel: [{text, tone}], tone in "" | "warn" | "error". `view` is the 200 body, `pinNote` what the pin
-// logic decided ({kind: "filled"|"moved"|"mismatch"|"older"|"kept", ...} or null).
+// logic decided ({kind: "filled"|"moved"|"refreshed"|"mismatch"|"older"|"kept", ...} or null).
 export function panelLines(view, pinNote, error) {
     const lines = [];
     if (error) {
@@ -157,6 +186,16 @@ export function panelLines(view, pinNote, error) {
         ? "SLG off"
         : `SLG ${s.slg_mode} layers ${s.slg_layers.join(",")} window ${fmt(s.slg_start)}-${fmt(s.slg_end)}`;
     lines.push({ text: slg, tone: "" });
+    const d = view.darkroom;
+    if (d) {
+        const finishNote = d.finish.cfg === view.__presetFinishCfg ? "" : " (cfg override)";
+        lines.push({
+            text: `darkroom  cfg ${fmt(d.compose.cfg)} -> ${fmt(d.finish.cfg)}${finishNote}  character weight `
+                + `${fmt(d.commit.w_compose)} -> ${fmt(d.commit.w_commit)}  r ${fmt(d.commit.r_c)} / ${fmt(d.commit.r_k)} / `
+                + `${fmt(d.finish.r_f)}  (the cfg widget sets the finish guidance unless finish_cfg is set)`,
+            tone: "",
+        });
+    }
     const cap = view.effective.budget.max_forwards;
     lines.push({
         text: `forwards ${view.forwards.expected_branch_forwards} (${view.forwards.branches_per_step}/step)`
@@ -172,24 +211,24 @@ export function panelLines(view, pinNote, error) {
     return lines;
 }
 
-// Widget limits from payload.override_bounds, or null. Only the maximum is applied: 0 stays the "preset value"
-// sentinel of the steps and cfg widgets (cfg 0 = the preset's own cfg), so their minimum is never raised.
+// Widget limits from payload.override_bounds, or null. MP-84: a value outside the preset's bounds only warns
+// (override_outside_bounds), so the widgets keep their own range and no limit is applied; the panel flags the value
+// (boundsLines). 0 stays the "preset value" sentinel of the steps and cfg widgets, so their minimum is never raised.
 export function boundsWidgetLimits(bounds, name) {
-    const b = bounds?.[name];
-    return b && typeof b.max === "number" ? { max: b.max } : null;
+    return null;
 }
 
 // Lines flagging the current widget values against payload.override_bounds. 0 (or unset) = the preset value: never flagged.
-export function boundsLines(bounds, values) {
+export function boundsLines(bounds, values, keys = BOUNDS_KEYS) {
     const lines = [];
     if (!bounds) return lines;
-    for (const name of BOUNDS_KEYS) {
+    for (const name of keys) {
         const b = bounds[name];
         const v = Number(values[name]);
         if (!b || !(v > 0)) continue;
         if (v < b.min || v > b.max) {
             lines.push({ text: `${name} ${fmt(v)} is outside the allowed ${fmt(b.min)} to ${fmt(b.max)} of this preset: `
-                + "the run will stop", tone: "error" });
+                + "the run goes on with the warning override_outside_bounds", tone: "warn" });
         } else if (v < b.verified_min || v > b.verified_max) {
             lines.push({ text: `${name} ${fmt(v)} is outside the verified ${fmt(b.verified_min)} to `
                 + `${fmt(b.verified_max)}: the run goes on with a warning`, tone: "warn" });
@@ -198,12 +237,12 @@ export function boundsLines(bounds, values) {
     return lines;
 }
 
-function applyBoundsToWidgets(node, bounds) {
+function applyBoundsToWidgets(node, bounds, keys = BOUNDS_KEYS) {
     for (const name of BOUNDS_KEYS) {
         const w = widgetOf(node, name);
         if (!w?.options) continue;
         if (w.__mpMax === undefined) w.__mpMax = w.options.max;
-        const limit = boundsWidgetLimits(bounds, name);
+        const limit = keys.includes(name) ? boundsWidgetLimits(bounds, name) : null;
         w.options.max = limit ? limit.max : w.__mpMax;
     }
 }
@@ -244,7 +283,7 @@ const valueOf = (node, name) => widgetOf(node, name)?.value;
 
 function collectValues(node) {
     const out = {};
-    for (const n of ["cfg", "steps", "slg_mode", "slg_layers", "slg_start", "slg_end"]) out[n] = valueOf(node, n);
+    for (const n of ["cfg", "steps", "slg_mode", "slg_layers", "slg_start", "slg_end", ...DARKROOM_KNOBS]) out[n] = valueOf(node, n);
     return out;
 }
 
@@ -258,6 +297,11 @@ async function decidePin(current, presetId, installedPin) {
     if (!parsed) return { write: null, note: { kind: "malformed", pin: cur } };
     if (parsed.id === presetId) {
         if (pinMatches(cur, installedPin)) return { write: null, note: null };
+        // MP-76: same id and version, only sha8 differs (the content changed without a version bump): refresh it. A
+        // different version is a deliberate pin and is never rewritten.
+        if (parsed.version === parsePin(installedPin)?.version) {
+            return { write: installedPin, note: { kind: "refreshed", from: cur, pin: installedPin } };
+        }
         return { write: null, note: { kind: "older", pin: cur, installed: installedPin } };
     }
     // another preset's pin: ours (installed pin of that preset) follows the combo, a typed one is only reported
@@ -300,10 +344,12 @@ async function refresh(node) {
     if (!base.ok) return render(node, panelLines(null, null, base.body.error ?? { message: "no data" }));
     if (!base.body.preset) return render(node, panelLines(null, null, { message: "unexpected route answer" }));
     const bounds = base.body.override_bounds ?? null;
-    applyBoundsToWidgets(node, bounds);
+    // a darkroom preset: the cfg widget is the finish guidance, which override_bounds.cfg (the compose guidance) does not bound
+    const boundKeys = base.body.darkroom ? BOUNDS_KEYS.filter((k) => k !== "cfg") : BOUNDS_KEYS;
+    applyBoundsToWidgets(node, bounds, boundKeys);
     const values = collectValues(node);
     if (sigmasLinked(node)) values.steps = 0; // steps is ignored with a sigmas input
-    const extra = boundsLines(bounds, values);
+    const extra = boundsLines(bounds, values, boundKeys);
     const query = withNodeClass(overridesQuery(collectValues(node), sigmasLinked(node)), node.comfyClass ?? node.type);
     const eff = query ? await getView(presetId, query) : base;
     if (seq !== node.__mpSeq) return;
@@ -321,6 +367,7 @@ async function refresh(node) {
     }
     if (!eff.ok) return render(node, panelLines(null, note, eff.body.error ?? { message: "no data" }).concat(extra));
     eff.body.__presetCfg = base.body.effective.sampling.cfg;
+    eff.body.__presetFinishCfg = base.body.darkroom?.finish.cfg;
     render(node, panelLines(eff.body, note).concat(extra));
 }
 
@@ -355,7 +402,7 @@ function attach(node) {
     w.serialize = false; // never part of widgets_values: saved workflows keep their positional values
     w.mpHeight = 4 * LINE_H + 8;
     node.__mpPanel = w;
-    for (const n of ["preset", "cfg", "steps", "slg_mode", "slg_layers", "slg_start", "slg_end", "preset_pin"]) {
+    for (const n of ["preset", "cfg", "steps", "slg_mode", "slg_layers", "slg_start", "slg_end", "preset_pin", ...DARKROOM_KNOBS]) {
         hook(node, n);
     }
     // widget values of a loaded workflow are applied after nodeCreated: wait one tick, loadedGraphNode refreshes too

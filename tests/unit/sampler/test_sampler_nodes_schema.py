@@ -7,10 +7,13 @@ from moss_photon.core import consts, presets, solver
 from moss_photon.nodes import sampler
 
 BASIC_REQUIRED = ["model", "positive", "negative", "latent", "seed", "preset", "cfg"]
-BASIC_OPTIONAL = ["identity_profile", "constraints", "vae", "preview", "preset_pin"]
+V020_BASIC_OPTIONAL = ["identity_profile", "constraints", "vae", "preview", "preset_pin"]
+BASIC_OPTIONAL = V020_BASIC_OPTIONAL + ["steps"]   # MP-84: appended last, nothing before it moves; Advanced keeps its required steps
 ADVANCED_REQUIRED = BASIC_REQUIRED + ["steps", "slg_mode", "slg_layers", "slg_start", "slg_end", "solver",
                                       "cfg_profile", "noise_policy", "max_forwards", "fingerprint"]
-ADVANCED_OPTIONAL = BASIC_OPTIONAL + ["sigmas", "report_step_times"]
+ADVANCED_OPTIONAL = V020_BASIC_OPTIONAL + ["sigmas", "report_step_times", "finish_model", "schedule", "compose_cfg", "compose_slg",
+                                      "r_c", "r_k", "w_compose", "w_commit", "reexpose", "sigma_r", "r_f", "finish_cfg",
+                                      "eta", "switch_model"]  # MP-71: the darkroom knobs, appended last
 
 
 class BasicSchemaTest(unittest.TestCase):
@@ -166,14 +169,15 @@ class RequestBuildingTest(unittest.TestCase):
         self.assertEqual(req.cfg, 3.0)
         self.assertIn("cfg 3 from the user (widget)", out["ui"]["text"][0])
         req, _ = self.capture(sampler.MossPhotonSampler(), **dict(self.BASE, preset="turbo_8step", cfg=3.0))
-        self.assertEqual(req.cfg, 3.0)  # explicit: the turbo bounds reject it later, in the resolver
+        self.assertEqual(req.cfg, 3.0)  # explicit: the turbo bounds only warn later, in the resolver (MP-84)
 
-    def test_cfg_zero_with_an_unknown_preset_or_bad_pin_raises_the_resolver_error(self):
+    def test_cfg_zero_with_an_unknown_preset_raises_the_resolver_error_and_a_bad_pin_does_not(self):
+        """MP-84: a pin is advisory (the resolver warns ``preset_pin_mismatch``); an unknown preset is still an error."""
         from moss_photon.core import errors
         with self.assertRaises(errors.UnknownPreset):
             self.capture(sampler.MossPhotonSampler(), **dict(self.BASE, preset="nope", cfg=0.0))
-        with self.assertRaises(errors.PresetVersionMismatch):
-            self.capture(sampler.MossPhotonSampler(), preset_pin="reference@9.9.9", **dict(self.BASE, cfg=0.0))
+        req, _ = self.capture(sampler.MossPhotonSampler(), preset_pin="reference@9.9.9", **dict(self.BASE, cfg=0.0))
+        self.assertEqual((req.preset_id, req.cfg), ("reference", 3.0))
 
     def test_advanced_uses_the_same_rule(self):
         req, out = self.capture(

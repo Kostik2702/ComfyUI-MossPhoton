@@ -9,6 +9,7 @@ import os
 import sys
 
 from ..core import constraints
+from ..core import constraints_contract as contract
 from ..core.consts import CAT_SETUP
 from ..core.errors import MissingRequiredInput, make_issue
 from ..core.fingerprint import sha256_file, text_encoder_path_of
@@ -144,6 +145,10 @@ class MossPhotonPromptLayout:
                 "check that the text encoder file is readable, then rerun").to_dict())
         pos_cond = _encode(clip, result["compiled_positive"])
         neg_cond = _encode(clip, negative)
+        # MP-60 (audit F02): the constraints carry the fingerprint of the conditioning they describe; the sampler
+        # compares it with what it receives, so constraints from another branch or a conditioning changed after this
+        # node are detected instead of trusted.
+        result["conditioning"] = contract.conditioning_binding(pos_cond, neg_cond)
         return {"ui": {"text": [_summary(result)]}, "result": (pos_cond, neg_cond, result)}
 
 

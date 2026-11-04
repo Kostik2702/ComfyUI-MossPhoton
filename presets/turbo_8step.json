@@ -29,7 +29,7 @@
         "source": {
           "unit": "Euler steps",
           "kind": "owner_practice",
-          "source": "owner 2026-10-25: raises steps to 12-16 when needed; cards document 8 (lodestones/Kromoss README lines 79, 139; '4 steps also works' line 113); 9-16 has no card source"
+          "source": "maintainers 2026-10-25: raises steps to 12-16 when needed; cards document 8 (lodestones/Kromoss README lines 79, 139; '4 steps also works' line 113); 9-16 has no card source"
         }
       },
       "cfg": {
@@ -40,7 +40,7 @@
         "source": {
           "unit": "dimensionless guidance scale",
           "kind": "owner_practice",
-          "source": "owner 2026-10-25: raises CFG to 1.5-2 when needed; card CFG 1 (README line 140), workflow note '1.0 (1.1 if you need negative prompt)' (kromoss_simple_workflow.json node 30); above 1.1 has no card source"
+          "source": "maintainers 2026-10-25: raises CFG to 1.5-2 when needed; card CFG 1 (README line 140), workflow note '1.0 (1.1 if you need negative prompt)' (kromoss_simple_workflow.json node 30); above 1.1 has no card source"
         }
       }
     }
@@ -50,8 +50,8 @@
     {
       "id": "requires_distill_lora",
       "kind": "requires_lora_role",
-      "severity": "error",
-      "reason": "missing_lora",
+      "severity": "warning",
+      "reason": "none",
       "role": "distill"
     },
     {

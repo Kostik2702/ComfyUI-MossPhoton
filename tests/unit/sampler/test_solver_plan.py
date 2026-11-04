@@ -11,7 +11,7 @@ import types
 import unittest
 from unittest import mock
 
-from moss_photon.core import adapter, canon, consts, errors, fingerprint, solver
+from moss_photon.core import adapter, canon, consts, constraints_contract, errors, fingerprint, solver
 
 CONTRACTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                          "fixtures", "contracts")
@@ -120,6 +120,24 @@ class Scenario:
         self.assert_untouched()
         return cm.exception
 
+    def reach(self, **kw):
+        """The request passes the whole preflight (the clone / SLG spy stops the run on purpose: ``Stop``); returns the
+        codes of the warnings the run noted on the way. MP-84: a setting conflict degrades to a warning, so the run goes on."""
+        seen = []
+        self.noted = []
+        real = solver.report.ReportBuilder.warn
+
+        def warn(builder, issue, scope=None):
+            item = issue.to_dict() if hasattr(issue, "to_dict") else dict(issue)
+            self.noted.append(item)
+            seen.append(item["code"])
+            return real(builder, issue, scope)
+
+        with mock.patch.object(solver.report.ReportBuilder, "warn", warn):
+            with self.test.assertRaises(Stop):
+                self.run(**kw)
+        return seen
+
     def assert_untouched(self):
         self.test.assertEqual(self.model.clone_calls, 0, "model.clone() was called")
         for name, spy in self.spies.items():
@@ -131,11 +149,22 @@ def profile_fixture():
         return json.load(f)
 
 
-def constraints_fixture(**blocks):
+def constraints_fixture(bind=True, **blocks):
+    """The constraints fixture with the given block flags (and a field text that agrees with each flag), bound to
+    the empty conditioning the Scenario passes (``bind=False``: the fixture's own, unbound ``conditioning: null``).
+    Since MP-60 the sampler validates the contract and runs its checks only for constraints that describe the
+    conditioning it received."""
     with open(os.path.join(CONTRACTS, "constraints.json"), "r", encoding="utf-8") as f:
         c = json.load(f)
-    c["blocks_present"].update(blocks)
-    return c
+    for name, present in blocks.items():
+        c["blocks_present"][name] = present
+        c["fields"][name] = (c["fields"][name] or "x") if present else ""
+    return constraints_contract.bind_conditioning(c, [], []) if bind else c
+
+
+def layout_with_extent(extent):
+    return {"items": 1, "bbox_coord_space": "abs_centralized", "bbox_format": "yxyx", "bboxes": [list(extent)],
+            "extent": list(extent), "experimental": True}
 
 
 class PreflightErrorsTest(unittest.TestCase):
@@ -182,30 +211,48 @@ class PreflightErrorsTest(unittest.TestCase):
     def test_unknown_preset(self):
         Scenario(self).expect("invalid_preset", preset_id="nope")
 
-    def test_pin_mismatch_and_malformed_pin(self):
-        Scenario(self).expect("preset_version_mismatch", preset_pin="reference@9.9.9")
-        Scenario(self).expect("preset_version_mismatch", preset_pin="reference@1.0")
+    def test_pin_mismatch_and_malformed_pin_are_warnings_and_the_run_goes_on(self):
+        for pin in ("reference@9.9.9", "reference@1.0", "other@1.0.0", "not a pin"):
+            with self.subTest(pin=pin):
+                self.assertIn("preset_pin_mismatch", Scenario(self).reach(preset_pin=pin))
 
-    def test_invalid_override(self):
-        Scenario(self).expect("invalid_override", overrides={"steps": 5000})
+    def test_a_value_of_the_wrong_type_is_still_an_invalid_override(self):
+        Scenario(self).expect("invalid_override", overrides={"steps": "five"})
+
+    def test_steps_above_the_limit_are_moved_to_it_with_a_warning(self):
+        self.assertIn("setting_adjusted", Scenario(self).reach(overrides={"steps": 5000}))
 
     def test_slg_layer_that_does_not_exist_on_this_model(self):
+        """The preset's OWN layer (reference: 22) on a model without it: the wrong model, still an error."""
         Scenario(self, facts=good_facts(num_layers=4)).expect("invalid_override")
 
-    def test_cfg_out_of_range(self):
-        Scenario(self).expect("invalid_override", cfg=31.0)
+    def test_slg_layers_the_model_does_not_have_are_dropped_with_a_warning(self):
+        codes = Scenario(self, facts=good_facts(num_layers=30)).reach(
+            overrides={"slg_mode": "uncond_skip", "slg_layers": [22, 99]})
+        self.assertIn("setting_adjusted", codes)
 
-    def test_identity_safe_without_a_lora_profile(self):
-        e = Scenario(self).expect("missing_lora", preset_id="identity_safe")
-        self.assertIn("role", e.issue.message)
+    def test_cfg_out_of_range_is_moved_into_range_with_a_warning(self):
+        for cfg in (31.0, 0.5):
+            with self.subTest(cfg=cfg):
+                self.assertIn("setting_adjusted", Scenario(self).reach(cfg=cfg))
 
-    def test_identity_safe_with_a_profile_without_a_character(self):
+    def test_identity_safe_without_a_lora_profile_notes_the_role_and_goes_on(self):
+        self.assertIn("lora_not_recorded", Scenario(self).reach(preset_id="identity_safe"))
+
+    def test_identity_safe_with_a_profile_without_a_character_notes_the_role_and_goes_on(self):
         profile = profile_fixture()
         profile["stack"][0]["role"] = "style"
         facts = good_facts(lora_stack_attachment=canon.canonical_json(profile["attachment"]),
                            patches_uuid=profile["attachment"]["patches_uuid"],
                            patch_entries=profile["attachment"]["patch_entries_total"])
-        Scenario(self, facts=facts).expect("missing_lora", preset_id="identity_safe", identity_profile=profile)
+        self.assertIn("lora_not_recorded", Scenario(self, facts=facts).reach(preset_id="identity_safe",
+                                                                             identity_profile=profile))
+
+    def test_ordinary_loader_patches_are_not_a_missing_role(self):
+        """A MODEL with patches no profile explains (a stock LoraLoader) is phase all: no role note, an info at most."""
+        codes = Scenario(self, facts=good_facts(patch_entries=252)).reach(preset_id="identity_safe")
+        self.assertNotIn("lora_not_recorded", codes)
+        self.assertIn("foreign_patches", codes)
 
     def test_wardrobe_safe_with_an_empty_wardrobe_block(self):
         Scenario(self).expect("missing_required_input", preset_id="wardrobe_safe",
@@ -229,18 +276,19 @@ class PreflightErrorsTest(unittest.TestCase):
     def test_a_profile_that_does_not_belong_to_the_model(self):
         Scenario(self).expect("incompatible_lora", identity_profile=profile_fixture())
 
-    def test_a_phase_plan(self):
+    def test_a_phase_plan_that_does_not_match_the_stack_is_a_broken_profile(self):
+        """A profile that does not describe itself consistently is refused; a CONSISTENT phased profile on the basic sampler
+        degrades to a constant weight (integration test: ``test_lora_plan_cpu``)."""
         profile = profile_fixture()
         profile["phase_plan"] = {"kind": "phased"}
         facts = good_facts(lora_stack_attachment=canon.canonical_json(profile["attachment"]),
                            patches_uuid=profile["attachment"]["patches_uuid"],
                            patch_entries=profile["attachment"]["patch_entries_total"])
-        e = Scenario(self, facts=facts).expect("unsupported_feature", identity_profile=profile)
-        self.assertIn("MossPhotonSamplerAdvanced", str(e))
+        Scenario(self, facts=facts).expect("unsupported_feature", identity_profile=profile)
 
     def test_layout_outside_the_canvas(self):
         c = constraints_fixture()
-        c["layout"] = {"items": 1, "extent": [-5000, 0, 0, 0]}
+        c["layout"] = layout_with_extent([-5000, 0, 0, 0])
         Scenario(self).expect("invalid_layout", constraints=c)
 
     def test_invalid_schedule_nan(self):
@@ -252,8 +300,9 @@ class PreflightErrorsTest(unittest.TestCase):
     def test_input_sigmas_are_validated_before_any_forward(self):
         Scenario(self).expect("invalid_schedule", sigmas=FakeSigmas([1.0, 0.5, 0.6, 0.0]))
 
-    def test_budget(self):
-        Scenario(self).expect("budget_exceeded", max_forwards=10)
+    def test_a_plan_over_the_forward_limit_is_a_warning_and_the_run_goes_on(self):
+        self.assertIn("forward_budget_exceeded", Scenario(self).reach(max_forwards=10))
+        self.assertNotIn("forward_budget_exceeded", Scenario(self).reach(max_forwards=1000))
 
     def test_seed_plus_i_with_batch_index(self):
         s = Scenario(self, latent=good_latent(has_batch_index=True))

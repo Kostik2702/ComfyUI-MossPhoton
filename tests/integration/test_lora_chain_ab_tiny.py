@@ -201,15 +201,18 @@ class DistillCharacterStackTest(unittest.TestCase):
                     self.assertEqual(ctx.exception.code, "incompatible_lora")
                     self.assertIn("data-space DMD", str(ctx.exception))
 
-    def test_second_distill_in_the_chain_is_incompatible_lora(self):
+    def test_second_distill_in_the_chain_is_a_warning(self):
+        """MP-84: a second distill LoRA degrades to the warning ``multiple_distill_loras`` (it was an ``incompatible_lora``)."""
         with self.known(), self.sft_identity():
             m1, p1, _ = lora_synth.run_node(self.patcher, "distill.safetensors", role="distill")
             self.env.write("distill2.safetensors", lora_synth.make_lora_sd(
                 self.patcher, fmt="kohya", modules=lora_synth.KOHYA_SPLIT, rank=8, seed=22))
-            with self.assertRaises(self.errors.IncompatibleLora) as ctx:
-                lora_synth.run_node(m1, "distill2.safetensors", role="distill", profile_in=p1)
-            self.assertIn("distill LoRAs are used one at a time", str(ctx.exception))
+            m2, p2, _ = lora_synth.run_node(m1, "distill2.safetensors", role="distill", profile_in=p1)
+            self.assertEqual([(w["code"], w["severity"]) for w in p2["stack"][1]["warnings"]
+                              if w["code"] == "multiple_distill_loras"], [("multiple_distill_loras", "warning")])
+            self.assertIn("distill LoRAs are meant to be used one at a time", p2["stack"][1]["warnings"][-1]["message"])
             self.assertEqual(len(p1["stack"]), 1)
+            self.assertEqual(len(p2["stack"]), 2)
 
     def test_two_characters_warn(self):
         _m, p, _ = lora_synth.run_node(self.patcher, "char.safetensors")

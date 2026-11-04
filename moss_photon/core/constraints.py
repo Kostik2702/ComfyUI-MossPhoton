@@ -1,6 +1,6 @@
 """Prompt compiler, layout validator, conflict detector and PHOTON_CONSTRAINTS builder (design 1.4, 2.5, 4.3).
 
-Pure module: stdlib + ``errors``, ``canon``, ``consts`` only (design 7.3). No comfy, no torch.
+Pure module: stdlib + ``errors``, ``canon``, ``consts``, ``constraints_contract`` only (design 7.3). No comfy, no torch.
 
 Decisions this module carries:
 
@@ -18,6 +18,12 @@ from typing import NamedTuple, Optional
 
 from .canon import sha256_hex
 from .consts import COMPILER_VERSION, CONSTRAINTS_SCHEMA
+from .constraints_contract import BBOX_FORMAT as _BBOX_FORMAT
+from .constraints_contract import BLOCK_NAMES
+from .constraints_contract import COORD_SPACE as _COORD_SPACE
+from .constraints_contract import has_content as _has_content
+from .constraints_contract import is_int as _is_int
+from .constraints_contract import validate_constraints
 from .errors import InvalidLayout, make_issue
 
 __all__ = [
@@ -28,7 +34,8 @@ __all__ = [
 
 NODE = "MossPhotonPromptLayout"
 
-BLOCK_NAMES = ("identity", "wardrobe", "scene", "pose", "camera", "lighting", "forbidden_changes")
+# BLOCK_NAMES and validate_constraints live in constraints_contract (the sampler validates the object it receives
+# and may not import this module, M4); they are re-exported here, unchanged.
 # OD1: forbidden_changes is NOT compiled.
 COMPILED_BLOCKS = ("identity", "wardrobe", "scene", "pose", "camera", "lighting")
 BLOCK_LABELS = {"identity": "Subject", "wardrobe": "Clothing", "scene": "Scene", "pose": "Pose",
@@ -38,8 +45,6 @@ BLOCK_LABELS = {"identity": "Subject", "wardrobe": "Clothing", "scene": "Scene",
 PRIVATE_PATHS = ("fields", "user_text", "compiled_positive", "negative_text")
 
 LAYOUT_LABELS = ("text", "character", "object")
-_COORD_SPACE = "abs_centralized"
-_BBOX_FORMAT = "yxyx"
 
 # Conflict lexicons. Changing them changes the output of detect_conflicts, so a change bumps COMPILER_VERSION.
 COLOR_WORDS = frozenset((
@@ -61,10 +66,6 @@ _WORD_WINDOW = 2
 
 _TOKEN_RE = re.compile(r"[a-z]+|[^a-z\s]+")
 _WORD_RE = re.compile(r"[a-z]+")
-
-
-def _has_content(text):
-    return bool(text) and bool(text.strip())
 
 
 def compile_prompt(user_text, blocks):
@@ -117,10 +118,6 @@ def _check_keys(obj, allowed, path):
         if key not in allowed:
             raise _layout_error(("%s.%s" % (path, key)) if path else str(key),
                                 "unknown key (allowed: %s)" % ", ".join(allowed))
-
-
-def _is_int(value):
-    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _parse_item(item, index):
@@ -318,7 +315,7 @@ def _flags(blocks):
     return {name: _has_content(blocks.get(name) or "") for name in BLOCK_NAMES}
 
 
-def build_constraints(user_text, negative_text, blocks, layout, conflicts, text_encoder=None):
+def build_constraints(user_text, negative_text, blocks, layout, conflicts, text_encoder=None, conditioning=None):
     """Build the PHOTON_CONSTRAINTS dict (design 2.5; validates against ``tests/fixtures/contracts/schemas``).
 
     ``layout``: a ``LayoutResult`` or ``None``. ``compiled_positive`` is the exact text sent to the encoder: the
@@ -326,6 +323,9 @@ def build_constraints(user_text, negative_text, blocks, layout, conflicts, text_
     true iff the block has a non-whitespace character (the data behind the SPEC 6.3 empty-wardrobe/scene errors,
     which the sampler raises). ``fields`` keeps the 7 blocks as typed. ``warnings`` carry one ``attribute_conflict``
     per conflict and ``layout_experimental`` when a layout is used. ``text_encoder``: dict or ``None``, stored as is.
+    ``conditioning``: ``constraints_contract.conditioning_binding`` of the conditioning that was encoded from
+    ``compiled_positive`` and ``negative_text`` (MP-60, audit F02), or ``None`` when no conditioning exists yet; the
+    sampler treats ``None`` as unbound and runs none of the checks that depend on the constraints.
     """
     fields = {name: (blocks.get(name) or "") for name in BLOCK_NAMES}
     compiled = compile_prompt(user_text, blocks)
@@ -354,63 +354,5 @@ def build_constraints(user_text, negative_text, blocks, layout, conflicts, text_
         "conflicts": [dict(c) for c in conflicts],
         "warnings": warnings,
         "text_encoder": text_encoder,
+        "conditioning": conditioning,
     }
-
-
-_REQUIRED_KEYS = ("schema_version", "kind", "compiler_version", "private_paths", "user_text", "negative_text",
-                  "compiled_positive", "fields", "blocks_present", "prompt_sha256", "layout", "conflicts",
-                  "warnings", "text_encoder")
-
-
-def validate_constraints(c):
-    """Structural and consistency problems of a constraints dict as readable strings (empty list = valid).
-
-    Checks keys and types the sampler relies on (not a full JSON Schema; the tests cross-check with jsonschema):
-    version/kind, every ``private_paths`` entry exists, the 7 block names in ``fields`` and ``blocks_present``,
-    ``blocks_present`` equals "has non-whitespace text", prompt hashes match the texts, layout shape.
-    """
-    if not isinstance(c, dict):
-        return ["constraints is not an object"]
-    problems = ["missing key %s" % k for k in _REQUIRED_KEYS if k not in c]
-    if problems:
-        return problems
-    if c["schema_version"] != CONSTRAINTS_SCHEMA:
-        problems.append("schema_version %r, expected %d" % (c["schema_version"], CONSTRAINTS_SCHEMA))
-    if c["kind"] != "photon_constraints":
-        problems.append("kind %r, expected 'photon_constraints'" % (c["kind"],))
-    if not _is_int(c["compiler_version"]) or c["compiler_version"] < 1:
-        problems.append("compiler_version must be an integer >= 1")
-    if not isinstance(c["private_paths"], list) or not c["private_paths"]:
-        problems.append("private_paths must be a non-empty list")
-    else:
-        problems += ["private path %r is not a key of the object" % p for p in c["private_paths"] if p not in c]
-    for key in ("fields", "blocks_present"):
-        if not isinstance(c[key], dict) or set(c[key]) != set(BLOCK_NAMES):
-            problems.append("%s must have exactly the keys %s" % (key, ", ".join(BLOCK_NAMES)))
-    if not problems:
-        for name in BLOCK_NAMES:
-            want = _has_content(c["fields"][name])
-            if c["blocks_present"][name] is not want:
-                problems.append("blocks_present.%s is %r but the field text says %r" % (name, c["blocks_present"][name], want))
-    hashes = c["prompt_sha256"]
-    if not isinstance(hashes, dict) or set(hashes) != {"positive", "negative"}:
-        problems.append("prompt_sha256 must have exactly the keys positive, negative")
-    else:
-        if hashes["positive"] != sha256_hex(c["compiled_positive"]):
-            problems.append("prompt_sha256.positive does not match compiled_positive")
-        if hashes["negative"] != sha256_hex(c["negative_text"]):
-            problems.append("prompt_sha256.negative does not match negative_text")
-    layout = c["layout"]
-    if layout is not None:
-        if not isinstance(layout, dict):
-            problems.append("layout must be null or an object")
-        else:
-            if layout.get("bbox_coord_space") != _COORD_SPACE or layout.get("bbox_format") != _BBOX_FORMAT:
-                problems.append("layout must be abs_centralized / yxyx")
-            bboxes = layout.get("bboxes")
-            if not isinstance(bboxes, list) or layout.get("items") != len(bboxes):
-                problems.append("layout.items must equal len(layout.bboxes)")
-            extent = layout.get("extent")
-            if not (isinstance(extent, list) and len(extent) == 4 and all(_is_int(v) for v in extent)):
-                problems.append("layout.extent must be 4 integers")
-    return problems

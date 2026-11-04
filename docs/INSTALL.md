@@ -1,6 +1,6 @@
 # Install
 
-Version 0.1.0. Scope: SFT only. Base: not verified in v1.
+Version 0.3.0. Scope: SFT only. Base: not verified in v1.
 
 ## 1. What you need
 
@@ -79,14 +79,15 @@ From the pack folder, with the Python of the ComfyUI you installed into (embedde
 <ComfyUI>\python_embeded\python.exe tests\run_tests.py --suite all
 ```
 
-- `unit` imports no ComfyUI. `integration` runs the sampler, LoRA and save paths on a tiny random MOSS model on the CPU
+- `unit` imports no ComfyUI. `integration` finds ComfyUI as the folder that holds `custom_nodes/ComfyUI-MossPhoton`; from any
+  other location set `MOSS_PHOTON_COMFY_ROOT` to the ComfyUI folder (without it the suite is skipped). `integration` runs the sampler, LoRA and save paths on a tiny random MOSS model on the CPU
   (no weights needed). `quality` is part of `run_tests.py`: it checks the example workflows, the preset docs and the
   release metadata offline. `all` runs the three. The `gpu` suite is opt-in (`MOSS_PHOTON_GPU=1`) and needs a GPU and
   real weights; it is not part of a normal install check.
 - `quality` reads a recording of `/object_info` (`tests/quality/object_info_snapshot.json`), so it needs no server. The
   recording holds the file lists of the machine it was made on; the example workflows use neutral file names, and the
   few that are not in the recording are listed as placeholders inside `tests/quality/test_workflows.py`. After a
-  ComfyUI update refresh the recording with the script in the development repository (`research/refresh_object_info_snapshot.py`; not shipped in this package; the
+  ComfyUI update refresh the recording with the maintainers' script from the development repository (not shipped in this package; the
   server must be running; GET requests only).
 
 These tests show that the code and the workflows are consistent. They do not show image quality.
@@ -99,8 +100,9 @@ ComfyUI version, the weights, the preset status and the experimental features. S
 ## 7. Update and remove
 
 - Update: pull the repository (junction) or replace the copied folder, restart ComfyUI. A workflow saved with an older
-  preset file keeps its `preset_pin`; when the installed preset differs from the pin the sampler stops with the
-  **error** `preset_version_mismatch` before the first forward. Select the preset again so the web extension rewrites
-  the pin, or clear the `preset_pin` field to run the installed version (an empty pin only warns `preset_unpinned`).
+  preset file keeps its `preset_pin`; when the installed preset differs from the pin the sampler runs the installed
+  preset and records the **warning** `preset_pin_mismatch` (a pin is advisory and never stops a run; it was the error
+  `preset_version_mismatch`). Select the preset again so the web extension rewrites the pin, or clear the `preset_pin`
+  field (an empty pin only warns `preset_unpinned`). Reports always name the installed version that actually ran.
 - Remove: delete the junction or the folder and restart. Nothing else is written outside the folder except the hash
   cache and the images and sidecars the Save node writes into the ComfyUI output folder.

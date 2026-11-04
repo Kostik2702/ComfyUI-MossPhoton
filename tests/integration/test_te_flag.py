@@ -40,12 +40,30 @@ class TeFlagTest(unittest.TestCase):
                 self.assertFalse(profile["attachment"]["entries"][0]["te"])
         self.assertEqual(len(self.clip.patcher.patches), 0)
 
-    def test_flag_on_without_clip_is_missing_required_input(self):
-        with self.assertRaises(self.errors.MissingRequiredInput) as ctx:
-            lora_synth.run_node(self.patcher, "with_te.safetensors", apply_text_encoder=True, strength_clip=0.7)
-        self.assertEqual(ctx.exception.code, "missing_required_input")
-        self.assertIn("clip", str(ctx.exception))
-        self.assertEqual(len(self.patcher.patches), 0)
+    def test_flag_on_without_clip_degrades_to_the_transformer_only_path_with_a_warning(self):
+        """MP-73: a setting conflict is a warning on the stack entry, not an exception (was MissingRequiredInput)."""
+        with self.assertLogs("MossPhoton", level="WARNING") as logs:
+            out, profile, out_clip = lora_synth.run_node(
+                self.patcher, "with_te.safetensors", apply_text_encoder=True, strength_clip=0.7)
+        entry = profile["stack"][0]
+        self.assertIsNone(out_clip)
+        self.assertEqual(len(self.patcher.patches), 0, "the input model is untouched")
+        self.assertEqual(self.codes(entry), [("te_keys_ignored", "warning"), ("lora_setting_ignored", "warning")])
+        self.assertEqual(entry["applied_to"], {"transformer": True, "text_encoder": False})
+        self.assertEqual(entry["strength_clip"], 0.0)
+        self.assertFalse(profile["summary"]["te_applied"])
+        self.assertEqual(self.lora.patch_entries_of(out), 48)
+        self.assertEqual(self.lora.validate_identity_profile(profile), [])
+        note = [w for w in entry["warnings"] if w["code"] == "lora_setting_ignored"][0]
+        self.assertEqual(note["param"], "apply_text_encoder")
+        self.assertNotIn("with_te", note["message"] + note["fix"], "no file name in the warning")
+        self.assertTrue(any("lora_setting_ignored" in line for line in logs.output))
+
+    def test_flag_on_without_clip_and_zero_model_strength_is_a_pass_through(self):
+        out, profile, _clip = lora_synth.run_node(
+            self.patcher, "with_te.safetensors", apply_text_encoder=True, strength_clip=0.7, strength_model=0.0)
+        self.assertIs(out, self.patcher)
+        self.assertEqual(profile["stack"], [])
 
     def test_flag_on_with_clip_applies_to_a_clone_and_says_so(self):
         with self.assertLogs("MossPhoton", level="WARNING") as logs:

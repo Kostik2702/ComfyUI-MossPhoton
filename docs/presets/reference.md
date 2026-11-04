@@ -14,7 +14,7 @@ File description: Official OpenMOSS plugin workflow reproduced on the native pat
 
 ## Status
 
-Status `stable` is the catalog label of the baseline recipe. It does not mean that a parity gate has passed: that gate is pending (pending MP-12 / calibration).
+Status `stable` is the catalog label of the baseline recipe. It does not mean that a parity gate has passed: that gate is pending (pending calibration).
 
 ## Effective parameters (SFT)
 
@@ -65,18 +65,18 @@ The preset file declares no constraint.
 
 ## Limitations
 
-- Parity with the native ComfyUI graph is the design target (SPEC 3, 10); the GPU parity run has not been done yet (pending MP-12 / calibration).
+- Parity with the native ComfyUI graph is the design target (SPEC 3, 10); the GPU parity run has not been done yet (pending calibration).
 - Reference-only environment facts are recorded, not assumed: the text encoder file, the attention backend, the weight dtype. Quantised weights are labelled `reference_modified` and are not part of the verified matrix (DV21).
 - 50 steps with a negative branch: two model forwards per step (100 forwards).
 
 ## A/B report
 
-Pending MP-12 / calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
+Pending calibration. Nothing has been measured for this preset beyond what the tests in the repository check on a tiny CPU model.
 
 ### Examples of successes
 
-pending MP-12 / calibration.
+pending calibration.
 
 ### Examples of failures and worst cases
 
-pending MP-12 / calibration.
+pending calibration.

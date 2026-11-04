@@ -106,7 +106,7 @@ class RouteFieldsTest(unittest.TestCase):
 
     def test_error_bodies_carry_the_error_fields(self):
         fields = array_literal(self.src, "ERROR_FIELDS")
-        for query, pid, expect in (({}, "no_such_preset", 404), ({"cfg": "999"}, "reference", 400)):
+        for query, pid, expect in (({}, "no_such_preset", 404), ({"cfg": "abc"}, "reference", 400)):
             with self.subTest(expect=expect):
                 status, payload = routes.handle_resolved(pid, query)
                 self.assertEqual(status, expect)
@@ -176,6 +176,80 @@ class RouteFieldsTest(unittest.TestCase):
             self.assertIsNotNone(py.fullmatch(pin))
             self.assertEqual(presets.parse_pin(pin)["id"], pid)
         self.assertIsNone(py.fullmatch("reference@1.0"))
+
+    # ---- MP-71: darkroom presets
+    def test_darkroom_fields_are_in_the_payload_of_every_darkroom_preset_and_only_there(self):
+        fields = array_literal(self.src, "DARKROOM_FIELDS")
+        self.assertGreaterEqual(len(fields), 5)
+        seen = []
+        for pid in presets.catalog_ids():
+            status, payload = routes.handle_resolved(pid, {})
+            self.assertEqual(status, 200)
+            if "darkroom" in presets.catalog()[pid]:
+                seen.append(pid)
+                self.assertEqual(missing_paths(payload, fields), [], pid)
+                self.assertEqual(missing_paths(payload, self.read_fields), [], pid)
+            else:
+                self.assertNotIn("darkroom", payload, pid)
+                self.assertEqual(missing_paths(payload, fields), ["darkroom"] * len(fields),
+                                 "control: the walker does see a payload without the block")
+        self.assertEqual(seen, ["turbo_darkroom_portrait", "turbo_darkroom_fullbody"])
+
+    def test_the_cfg_override_of_a_darkroom_preset_is_the_finish_guidance_in_the_route(self):
+        status, payload = routes.handle_resolved("turbo_darkroom_portrait", {"cfg": "2.5", "node": "MossPhotonSampler"})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["darkroom"]["finish"]["cfg"], 2.5)
+        self.assertEqual(payload["effective"]["sampling"]["cfg"], 1.0)
+        self.assertEqual(missing_paths(payload, self.read_fields), [])
+        status, payload = routes.handle_resolved("turbo_darkroom_portrait", {"cfg": "99"})
+        self.assertEqual(status, 200)   # MP-84: moved to the largest guidance (30), with a warning; it was 400
+        self.assertEqual(payload["darkroom"]["finish"]["cfg"], 30.0)
+        self.assertIn("setting_adjusted", [w["code"] for w in payload["warnings"]])
+        status, payload = routes.handle_resolved("turbo_darkroom_portrait", {"cfg": "abc"})
+        self.assertEqual(status, 400)
+        self.assertEqual(missing_paths(payload, array_literal(self.src, "ERROR_FIELDS")), [])
+
+    def test_the_panel_sends_every_advanced_darkroom_knob_the_route_reads(self):
+        sent = array_literal(self.src, "DARKROOM_KNOBS")
+        self.assertEqual(sent, list(routes.DARKROOM_PARAMS))
+        self.assertIn("...DARKROOM_KNOBS", re.search(r"function collectValues\(.*?\n}\n", self.src, re.S).group(0))
+        self.assertIn("...DARKROOM_KNOBS", self.src.split("function attach")[1])  # the widgets refresh the panel
+        status, payload = routes.handle_resolved("turbo_darkroom_portrait", {
+            "node": "MossPhotonSamplerAdvanced", "compose_cfg": "1.5", "finish_cfg": "2.5", "w_commit": "1.1",
+            "compose_slg": "on", "switch_model": "off", "reexpose": "off", "schedule": "native", "eta": "0",
+            "slg_mode": "uncond_skip", "slg_layers": "22"})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["forwards"]["branches_per_step"], 2)
+        d = payload["darkroom"]
+        self.assertEqual((d["compose"]["cfg"], d["compose"]["slg"], d["finish"]["cfg"], d["commit"]["w_commit"]),
+                         (1.5, True, 2.5, 1.1))
+        self.assertTrue(payload["customized"])
+        self.assertEqual(missing_paths(payload, self.read_fields), [])
+        self.assertIn("darkroom_override_ignored", [w["code"] for w in payload["warnings"]])
+        for bad in ({"finish_cfg": "x"}, {"compose_slg": "maybe"}):
+            status, payload = routes.handle_resolved("turbo_darkroom_portrait", bad)
+            self.assertEqual(status, 400, bad)
+            self.assertEqual(missing_paths(payload, array_literal(self.src, "ERROR_FIELDS")), [])
+        # a phase order the run sorts is no error either (MP-84): the panel shows the preset's block with a warning
+        status, payload = routes.handle_resolved("turbo_darkroom_portrait", {"r_f": "0.1"})
+        self.assertEqual(status, 200)
+        self.assertIn("setting_adjusted", [w["code"] for w in payload["warnings"]])
+
+    def test_the_panel_query_follows_the_node_sentinels(self):
+        """overridesQuery is JS and can not run here: the sentinel rules are read from its source and compared with the node's."""
+        m = re.search(r"export function overridesQuery\(.*?\n}\n", self.src, re.S)
+        self.assertIsNotNone(m)
+        text = m.group(0)
+        for rule in ('v !== "from_preset"', "Number(v) > 0", "Number(v) >= 0"):
+            self.assertIn(rule, text)
+        from moss_photon.nodes import sampler
+        opt = sampler.MossPhotonSamplerAdvanced.INPUT_TYPES()["optional"]
+        for name in routes.DARKROOM_PARAMS:
+            self.assertIn(name, opt)
+
+    def test_the_panel_shows_the_block_and_does_not_bound_the_finish_guidance_by_the_compose_bounds(self):
+        self.assertIn("view.darkroom", self.src)
+        self.assertRegex(self.src, r"base\.body\.darkroom \? BOUNDS_KEYS\.filter\(\(k\) => k !== \"cfg\"\)")
 
 
 if __name__ == "__main__":

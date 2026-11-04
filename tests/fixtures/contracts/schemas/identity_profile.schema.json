@@ -63,7 +63,12 @@
               "layers_covered": {"type": "integer", "minimum": 0},
               "layers_missing": {"type": "array", "items": {"type": "integer", "minimum": 0}},
               "te_modules_ignored": {"type": "integer", "minimum": 0},
-              "unmapped_examples": {"type": "array", "items": {"type": "string"}, "maxItems": 5}
+              "unmapped_examples": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+              "key_found": {"type": "integer", "minimum": 0},
+              "shape_ok": {"type": "integer", "minimum": 0},
+              "shape_unchecked": {"type": "integer", "minimum": 0},
+              "applied": {"type": "integer", "minimum": 0},
+              "shape_mismatch": {"type": "array", "items": {"type": "string"}, "maxItems": 20}
             }
           },
           "trained_on": {"enum": ["base", "sft", "unknown"]},

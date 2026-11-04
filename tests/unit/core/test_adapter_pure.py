@@ -6,7 +6,7 @@ import sys
 import types
 import unittest
 
-from moss_photon.core import adapter, errors
+from moss_photon.core import adapter, consts, errors
 
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 NODE = "MossPhotonSampler"
@@ -231,6 +231,14 @@ class DetectModifiersTest(unittest.TestCase):
 
     def test_clean_patcher_gives_empty_tuple(self):
         self.assertEqual(self.detect(self.patcher()), ())
+
+    def test_a_lora_phase_plan_is_not_a_modifier(self):
+        """MP-84: the plan patches nothing, so a MODEL that carries one is as clean as the MODEL it came from (without it the
+        label would read ``reference_modified``); any other unknown key is still a modifier."""
+        plan = [{"lora_name": "a", "strength": 1.0, "phase": "identity"}]
+        options = {"transformer_options": {}, consts.LORA_PLAN_KEY: plan}
+        self.assertEqual(self.detect(self.patcher(model_options=options)), ())
+        self.assertEqual(self.detect(self.patcher(model_options=dict(options, mystery=1))), ("model_option:mystery",))
 
     def test_each_rule(self):
         cases = [

@@ -1,5 +1,5 @@
-"""Generate docs/presets/<id>.md from presets/<id>.json (MP-13; SPEC 6.4). Lives inside the package (MP-34, m20) so
-``--suite quality`` runs on a copy of the package alone; ``research/gen_preset_docs.py`` is a thin wrapper.
+"""Generate docs/presets/<id>.md from presets/<id>.json (SPEC 6.4). Lives inside the package so
+``--suite quality`` runs on a copy of the package alone; the development repository has a thin wrapper script.
 
     <embedded python> tests/preset_docs.py
 
@@ -20,14 +20,14 @@ sys.path.insert(0, PKG)
 from moss_photon.core import consts  # noqa: E402
 from moss_photon.core import presets as presets_mod  # noqa: E402
 
-PENDING = "pending MP-12 / calibration"
+PENDING = "pending calibration"
 EQUAL_SENTENCE = (
     "The numeric parameters of this preset are numerically equal to reference (same steps, sampler, scheduler, shift, "
     "CFG and SLG). What differs is the input contract and the report; a different result in quality is not claimed."
 )
 
 # purpose, inputs (extra to the five basic ones), limitations, status note. Plain statements with a source in SPEC 6.1/6.3,
-# design 3/4 or docs/03-turbo.md; nothing here claims a gain.
+# the maintainers' design documents; nothing here claims a gain.
 TEXT = {
     "reference": {
         "purpose": "Regression and environment check, and the baseline every other preset is compared with. It "
@@ -55,13 +55,15 @@ TEXT = {
         "equal": True,
     },
     "identity_safe": {
-        "purpose": "One character with a compatible character LoRA (SPEC 6.1). It adds the rule that a character LoRA "
-                   "profile must be present before sampling starts.",
-        "inputs": ["A `MossPhotonLoRAProfile` with role `character`, connected to the sampler's `identity_profile` "
-                   "(missing: error `missing_lora` before any forward).",
+        "purpose": "One character with a compatible character LoRA (SPEC 6.1). A character LoRA is expected; since 0.3.0 "
+                   "none is required.",
+        "inputs": ["A character LoRA: an ordinary LoRA loader (it acts in every phase), `MossPhotonLoRAPhase`, or the "
+                   "deprecated `MossPhotonLoRAProfile` (role `character`) connected to the sampler's `identity_profile`. "
+                   "A role nobody recorded gives the note `lora_not_recorded`, never an error.",
                    "Optional: reference photos at the Diagnostics node (info only; no detector exists in v1)."],
         "limits": ["LoRA strength is not set by the preset; no verified strength exists for any character LoRA. The "
-                   "weight is constant (phased weight is MP-16, not in v1).",
+                   "weight is constant (a phased weight exists only as the experimental `phased` profile of the deprecated "
+                   "`MossPhotonLoRAProfile`, since 0.2.0).",
                    "No identity score exists in v1 (no detector or ArcFace dependency): the report can not say "
                    "that identity was preserved. The identity gate (SPEC 10) has not been run.",
                    "The guard `identity_score` is declared for the second queue and not implemented."],
@@ -73,7 +75,7 @@ TEXT = {
                    "wardrobe block to be filled.",
         "inputs": ["`MossPhotonPromptLayout` with the `wardrobe` block filled, its `constraints` output connected to the "
                    "sampler (empty block: error `missing_required_input`).",
-                   "A character LoRA is optional (owner decision OD2)."],
+                   "A character LoRA is optional (maintainers' decision)."],
         "limits": ["A source image or latent is refused (`unsupported_source_input`): the source-based branch needs "
                    "`MossPhotonProtectedRefine`, which is not in v1.",
                    "Nothing compares the generated clothing with the text: the guard `clothing_attributes` is declared "
@@ -127,22 +129,27 @@ TEXT = {
         "status": "Status `experimental`. The numeric parameters are the ones of reference until an override is given.",
     },
     "turbo_8step": {
-        "purpose": "8-step DMD2 turbo on SFT with the distill LoRA only (owner decision 2026-10-25). A deliberate "
+        "purpose": "8-step DMD2 turbo on SFT with the distill LoRA only (maintainers' decision 2026-10-25). A deliberate "
                    "deviation from SPEC 1 (see DEVIATIONS.md).",
-        "inputs": ["A `MossPhotonLoRAProfile` with role `distill` (strength 1.0), connected to `identity_profile` "
-                   "(missing: error `missing_lora`). Recognised file: `lodestones-8-steps-dmd2-lora` "
+        "inputs": ["The distill LoRA, strength 1.0: an ordinary LoRA loader (a merged turbo checkpoint needs none; the "
+                   "preset, not the LoRA, decides that the run is a turbo run), `MossPhotonLoRAPhase`, or the deprecated "
+                   "`MossPhotonLoRAProfile` (role `distill`). A distill role nobody recorded gives the note "
+                   "`lora_not_recorded`, never an error. Recognised file: `lodestones-8-steps-dmd2-lora` "
                    "(sha256 `7683fe1f...e6f2`).",
                    "An additional character LoRA gives the warning `preset_lora_roles_exceeded` (use "
                    "`turbo_identity` for that stack)."],
-        "limits": ["Own gate (docs/03-turbo.md 5.6), not run yet (" + PENDING + "). It is not a reference and "
+        "limits": ["Own gate (the maintainers' turbo design), not run yet (" + PENDING + "). It is not a reference and "
                    "`recommended_final` is false.",
                    "The DMD2 LoRA was trained on MOSS-Image-Base; its author's card does not cover SFT, so the "
                    "combination is unproven (info `lora_base_mismatch`).",
                    "Verified-by-source range is steps 8 and CFG 1.0 to 1.1. Steps 9 to 16 and CFG above 1.1 have no "
-                   "source (owner practice); they run with the warning `turbo_setting_outside_verified`.",
+                   "source (maintainers' practice); they run with the warning `turbo_setting_outside_verified`.",
                    "At CFG 1.0 the negative prompt has no effect (info `negative_unused_cfg1`). SLG is off; an SLG "
-                   "override is refused in the turbo presets (`invalid_override`) and, with the preset `advanced` at "
+                   "override is dropped in the turbo presets and, with the preset `advanced` at "
                    "CFG 1.0, has no effect (warning `slg_ineffective_cfg1`).",
+                   "A `steps` or `cfg` override outside the bounds runs as given with the warning "
+                   "`override_outside_bounds` (it was `invalid_override`); an SLG override outside the Advanced node is "
+                   "dropped with the warning `setting_adjusted`.",
                    "`MOSS_Image_SFT_8_steps_dmd_v0.1` is a different distillation and is refused "
                    "(`incompatible_lora`). An unknown distill file runs with `unverified_distill_lora`.",
                    "The fp32 delta is merged into the bf16 weights by ComfyUI's loader (the cards warn about that); "
@@ -150,17 +157,71 @@ TEXT = {
         "status": "Status `candidate` with its own gate; the quality of the turbo path is unmeasured.",
     },
     "turbo_identity": {
-        "purpose": "The 8-step DMD2 turbo stacked with a character LoRA (owner decision 2026-10-25). Order: distill "
+        "purpose": "The 8-step DMD2 turbo stacked with a character LoRA (maintainers' decision 2026-10-25). Order: distill "
                    "first, then the character LoRA.",
-        "inputs": ["Two chained `MossPhotonLoRAProfile` nodes: role `distill` (strength 1.0) first, role `character` "
-                   "second (`profile_in` from the first). Either one missing: error `missing_lora`.",
+        "inputs": ["The distill LoRA (strength 1.0) first, then the character LoRA: ordinary LoRA loaders chained by their "
+                   "MODEL sockets, `MossPhotonLoRAPhase` nodes, or the deprecated `MossPhotonLoRAProfile` chain (role "
+                   "`distill`, role `character`, `profile_in` from the first). A role nobody recorded gives the note "
+                   "`lora_not_recorded`, never an error.",
                    "Optional: reference photos at the Diagnostics node (info only)."],
-        "limits": ["Own gate (docs/03-turbo.md 5.6), not run yet (" + PENDING + "); `recommended_final` is false.",
+        "limits": ["Own gate (the maintainers' turbo design), not run yet (" + PENDING + "); `recommended_final` is false.",
                    "Identity under the distill LoRA is unmeasured and no identity score exists in v1. The character "
                    "strength comes from the LoRA profile; no verified value exists.",
                    "The order of the two LoRAs changes the result in the last bits and is recorded in the report.",
                    "The same unproven points as turbo_8step: DMD2 on SFT, steps 9 to 16, CFG above 1.1."],
         "status": "Status `candidate` with its own gate; identity under distill is unmeasured.",
+    },
+    "turbo_darkroom_portrait": {
+        "purpose": "The darkroom phases (compose, commit, finish) on the 8-step turbo stack with the portrait values: "
+                   "guidance 1.0 until the face locks, the character LoRA weight raised over the commit window, then a "
+                   "finish with the negative prompt. Of its numbers only w_commit 1.35 comes from the maintainers' calibration; the "
+                   "others are the maintainers' recipe values.",
+        "inputs": ["No LoRA is required. Ordinary LoRA loaders act in every phase; `MossPhotonLoRAPhase` nodes act in the "
+                   "phases they name (composition = compose; identity = every phase from the first step; texture = "
+                   "finish; composition+identity = compose, commit, hold; all = every phase, exactly an ordinary "
+                   "loader), and the commit weight boost is added to the strength of the `identity` entries "
+                   "(never `composition+identity`, never `all`, never a known distill LoRA; no such entry: the boost is "
+                   "skipped with the warning `darkroom_boost_skipped`). The deprecated `MossPhotonLoRAProfile` still works: a constant "
+                   "character profile gets the boost as an extra patch of the same LoRA file, a phased one has the "
+                   "preset's weights instead of its own phase plan.",
+                   "The `cfg` widget of the sampler sets the FINISH guidance on this preset (0 = the preset's "
+                   "`darkroom.finish.cfg`); the compose guidance is `sampling.cfg`. `MossPhotonSamplerAdvanced` has the "
+                   "phase knobs (`schedule`, `compose_cfg`, `compose_slg`, `r_c`, `r_k`, `w_compose`, `w_commit`, "
+                   "`reexpose`, `sigma_r`, `r_f`, `finish_cfg`, `eta`, `switch_model`) and the optional `finish_model`; "
+                   "each at its sentinel means the preset's value."],
+        "limits": ["Experimental: the report label is always `not_reference` with the reason `darkroom_experimental`, "
+                   "and `recommended_final` is false. No identity score exists in v1.",
+                   "The finish phase runs two model forwards per step (cfg above 1.0): the cost of the run is the "
+                   "report's `forwards`, not `steps x 1`.",
+                   "`schedule` sa2_8 was measured for 8 steps only: with another step count its knots are resampled "
+                   "(warning `setting_adjusted`). A `finish_model` needs `switch_model` on; otherwise it is ignored with "
+                   "the warning `finish_model_ignored`. A phase order the wrong way round is sorted, a finish phase with "
+                   "no step is skipped, both with a warning.",
+                   "Re-expose and noise injection are off in this preset (in the maintainers' runs re-expose smoothed the result on MOSS)."],
+        "status": "Status `candidate`, `calibration.state` uncalibrated: w_commit 1.35 is the maintainers' calibration pick (3 seeds, top of "
+                  "the tested range, not a proven optimum); the other values are the maintainers' recipe; no gate has been run.",
+        "ab": "Pending calibration. The only measurements are the maintainers' own runs: they compared "
+              "w_commit on three seeds (result files are in their development repository, not shipped: paired dSim "
+              "+0.022 [+0.012, +0.032] against 1.2, texture within noise); the tests in this package run on a tiny CPU "
+              "model.",
+    },
+    "turbo_darkroom_fullbody": {
+        "purpose": "The darkroom phases (compose, commit, finish) on the 8-step turbo stack with the full-body values. "
+                   "Today the numbers equal the maintainers' recipe `darkroom_turbo_fullbody`; the id is separate so the two "
+                   "can diverge after calibration.",
+        "inputs": ["No LoRA is required; the LoRA inputs are those of `turbo_darkroom_portrait` (ordinary loaders, "
+                   "`MossPhotonLoRAPhase`, or the deprecated profile chain).",
+                   "The `cfg` widget sets the FINISH guidance on this preset; the Advanced node has the phase knobs "
+                   "(see `turbo_darkroom_portrait`)."],
+        "limits": ["Experimental: the report label is always `not_reference` with the reason `darkroom_experimental`, "
+                   "and `recommended_final` is false.",
+                   "The finish phase runs two model forwards per step (cfg above 1.0).",
+                   "Not calibrated: the values are the maintainers' recipe values. Their comparison of w_commit, finish_cfg, r_f, "
+                   "steps and eta on full-body prompts found no robust gain, and the values were kept."],
+        "status": "Status `candidate`, uncalibrated: values kept after the maintainers' comparison found no robust gain.",
+        "ab": "Pending calibration. The only measurements are the maintainers' own runs (no robust "
+              "arm on full-body; result files are in their development repository, not shipped); the tests in this "
+              "package run on a tiny CPU model.",
     },
 }
 
@@ -238,6 +299,10 @@ def render(pid, preset):
     if bounds:
         w("Override bounds (explicit overrides outside the verified range run with a warning):")
         w("")
+        if preset.get("darkroom"):
+            w("The `cfg` bounds are the bounds of the compose guidance (`sampling.cfg`, the `compose_cfg` knob); the `cfg` "
+              "widget of this preset is the finish guidance and is limited to 1 to 30 only.")
+            w("")
         w("| Parameter | Allowed | Verified by a source | Source kind |")
         w("|---|---|---|---|")
         for key in sorted(bounds):
@@ -245,6 +310,30 @@ def render(pid, preset):
             w("| %s | %s to %s | %s to %s | %s |" % (
                 key, _fmt(b["min"]), _fmt(b["max"]), _fmt(b["verified_min"]), _fmt(b["verified_max"]),
                 b["source"]["kind"]))
+        w("")
+    block = preset.get("darkroom")
+    if block:
+        w("## Darkroom phases")
+        w("")
+        w("Read from the `darkroom` block of `presets/%s.json`; the run goes through the phase engine (compose, commit, "
+          "optional re-expose, finish). Phase bounds are sigma progress r = (sigma_0 - sigma) / (sigma_0 - sigma_last). "
+          "A step belongs to the phase its start r falls in. The `cfg` widget of the sampler overrides `finish.cfg`; "
+          "`MossPhotonSamplerAdvanced` has a knob for every row (the sentinel is the value below). A value that differs "
+          "from the one below marks the run customized and is listed in the report's diff as `darkroom.*`. The "
+          "sampling SLG widgets are not applied on this preset (warning `darkroom_override_ignored`); the darkroom SLG is "
+          "`compose.slg`." % pid)
+        w("")
+        w("| Parameter | Value |")
+        w("|---|---|")
+        w("| darkroom.schedule | %s |" % block["schedule"])
+        w("| darkroom.compose.cfg | %s |" % _fmt(block["compose"]["cfg"]))
+        w("| darkroom.compose.slg | %s |" % _fmt(block["compose"]["slg"]))
+        for key in ("r_c", "r_k", "w_compose", "w_commit"):
+            w("| darkroom.commit.%s | %s |" % (key, _fmt(block["commit"][key])))
+        w("| darkroom.reexpose.enabled | %s |" % _fmt(block["reexpose"]["enabled"]))
+        w("| darkroom.reexpose.sigma_r | %s |" % _fmt(block["reexpose"]["sigma_r"]))
+        for key in ("r_f", "cfg", "eta", "switch"):
+            w("| darkroom.finish.%s | %s |" % (key, _fmt(block["finish"][key])))
         w("")
     w("## Required inputs")
     w("")
@@ -280,7 +369,11 @@ def render(pid, preset):
     w("- Expected forwards for the preset numbers: %d (= %s steps x %d)." % (
         fw["expected_branch_forwards"], _fmt(smp["steps"]), fw["branches_per_step"]))
     w("- Budget cap in the preset file: %s." % _fmt(budget["max_forwards"]) + (
-        " Any plan above the cap stops before sampling (`budget_exceeded`)." if budget["max_forwards"] else ""))
+        " A plan above the cap is the warning `forward_budget_exceeded` and the run goes on." if budget["max_forwards"] else ""))
+    if block:
+        w("- Darkroom: the count above is the compose guidance only. The finish phase (from r = %s on) runs two branches "
+          "per step because %s > 1.0; the report states the exact count of the run." % (
+              _fmt(block["finish"]["r_f"]), "finish.cfg" if block["finish"]["cfg"] > 1.0 else "its guidance"))
     if bounds:
         top = bounds["steps"]["max"] * 2
         w("- Upper corner inside the bounds: %d steps at CFG above 1.0 = %d forwards." % (bounds["steps"]["max"], top))
@@ -299,8 +392,8 @@ def render(pid, preset):
     w("")
     w("## A/B report")
     w("")
-    w("Pending MP-12 / calibration. Nothing has been measured for this preset beyond what the tests in the repository "
-      "check on a tiny CPU model.")
+    w(text.get("ab") or "Pending calibration. Nothing has been measured for this preset beyond what the tests in "
+                        "the repository check on a tiny CPU model.")
     w("")
     w("### Examples of successes")
     w("")

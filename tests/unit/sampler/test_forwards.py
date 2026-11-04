@@ -55,15 +55,20 @@ class PlanRunTest(unittest.TestCase):
         plan = solver.plan_run(r, LATENT, sigmas(25), max_forwards=0)
         self.assertEqual(plan.expected_branch_forwards, 52)
 
-    def test_advanced_limit_exceeded(self):
-        with self.assertRaises(errors.BudgetExceeded) as cm:
-            self.plan(max_forwards=99)
-        self.assertEqual(cm.exception.issue.detail["planned"], 100)
-        self.assertEqual(cm.exception.issue.detail["limit"], 99)
-        self.assertIn("lower steps or raise max_forwards", str(cm.exception))
+    def test_advanced_limit_exceeded_is_a_warning(self):
+        """MP-84: the plan carries the warning ``forward_budget_exceeded``; the run goes on (it raised ``budget_exceeded``)."""
+        plan = self.plan(max_forwards=99)
+        self.assertEqual([(i.code, i.severity) for i in plan.issues], [("forward_budget_exceeded", "warning")])
+        issue = plan.issues[0]
+        self.assertEqual(issue.detail["planned"], 100)
+        self.assertEqual(issue.detail["limit"], 99)
+        self.assertEqual(issue.detail["limit_source"], "max_forwards")
+        self.assertIn("lower steps or raise max_forwards", issue.fix)
+        self.assertEqual((plan.expected_branch_forwards, plan.limit), (100, 99))
 
     def test_advanced_limit_exactly_met_passes(self):
-        self.assertEqual(self.plan(max_forwards=100).limit, 100)
+        plan = self.plan(max_forwards=100)
+        self.assertEqual((plan.limit, plan.issues), (100, ()))
 
     def test_zero_means_unlimited(self):
         self.assertIsNone(self.plan(max_forwards=0).limit)
@@ -71,8 +76,9 @@ class PlanRunTest(unittest.TestCase):
     def test_preset_budget_limit(self):
         r = presets.resolve("reference")
         r.effective["budget"]["max_forwards"] = 40
-        with self.assertRaises(errors.BudgetExceeded):
-            solver.plan_run(r, LATENT, sigmas(50), max_forwards=0)
+        over = solver.plan_run(r, LATENT, sigmas(50), max_forwards=0)
+        self.assertEqual([(i.code, i.detail["limit_source"]) for i in over.issues],
+                         [("forward_budget_exceeded", "the preset budget")])
         self.assertEqual(solver.plan_run(r, LATENT, sigmas(20), max_forwards=0).limit, 40)
 
     def test_the_smaller_limit_is_reported(self):

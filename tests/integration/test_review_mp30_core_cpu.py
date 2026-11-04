@@ -19,7 +19,7 @@ def known_family(family, sha, *, verified, variant="bf16"):
     ident = {"identity": {"sha256": sha, "size": 10164655808, "basename": "%s_%s.safetensors" % (family, variant),
                           "hash_source": "cache", "classified_by": "known_table", "official": True, "variant": variant,
                           "verified_matrix": verified}, "family": family, "warnings": []}
-    return mock.patch.object(fingerprint, "identify_checkpoint", return_value=ident)
+    return mock.patch.object(fingerprint, "identify_checkpoint", ss.returning(ident))
 
 
 BASE_SHA = "cacd158728a1fb9e57c408a922b54752ec71fceb566b3821269927964e62b41f"
@@ -95,11 +95,15 @@ class CoreReviewFixesTest(unittest.TestCase):
         self.assertEqual(rep["label"]["modifiers"], ["weight_dtype:torch.float32"])
         self.assertEqual(rep["label"]["not_reference_reasons"], [])
 
-    def test_the_simple_sampler_path_still_refuses_an_slg_override_on_turbo(self):
-        with ss.known_sft(), self.assertRaises(self.errors.InvalidOverride) as cm:
-            ss.run(self.tiny, model=self.distill, identity_profile=self.distill_profile, preset_id="turbo_8step",
-                   cfg=1.5, overrides={"slg_mode": "uncond_skip", "slg_layers": [22]})
-        self.assertIn("MossPhotonSamplerAdvanced", str(cm.exception))
+    def test_the_simple_sampler_path_drops_an_slg_override_on_turbo_with_a_warning(self):
+        """MP-84: it was ``invalid_override``; the run goes on without the SLG override and names the node that allows it."""
+        with ss.known_sft(), ss.NoSample():
+            rep = ss.run(self.tiny, model=self.distill, identity_profile=self.distill_profile, preset_id="turbo_8step",
+                         cfg=1.5, overrides={"slg_mode": "uncond_skip", "slg_layers": [22]}).report
+        self.assertEqual(rep["sampling"]["slg"]["mode"], "off")
+        adjusted = [w for w in rep["warnings"] if w["code"] == "setting_adjusted"]
+        self.assertIn("MossPhotonSamplerAdvanced", adjusted[0]["message"] + adjusted[0]["fix"])
+        self.assertNotIn("turbo_slg_experimental", ss.codes(rep))
 
     def test_the_advanced_node_without_slg_widgets_is_unchanged(self):
         rep = self.advanced(slg_mode="from_preset", slg_layers="", cfg=1.0)
@@ -170,11 +174,16 @@ class CoreReviewFixesTest(unittest.TestCase):
         self.assertEqual(rep["label"]["parity_class"], "reference_unverified")
 
     # ------------------------------------------------------------------ m1 through a real model
-    def test_a_wrong_graph_is_refused_before_the_checkpoint_is_hashed(self):
+    def test_a_wrong_model_is_refused_before_the_checkpoint_is_hashed(self):
+        """MP-84: a missing LoRA is no longer a wrong graph; a model that is not MOSS still is, and it never pays the hash."""
+        import types
         from moss_photon.core import fingerprint
+        fake = types.SimpleNamespace(model=object(), model_options={}, patches={}, patches_uuid="x",
+                                     get_model_object=lambda name: None, model_dtype=lambda: None, load_device="cpu",
+                                     is_dynamic=lambda: False)
         with mock.patch.object(fingerprint, "identify_checkpoint") as identify, \
-                self.assertRaises(self.errors.MissingLora):
-            ss.run(self.tiny, preset_id="turbo_8step", cfg=1.0)
+                self.assertRaises(self.errors.UnsupportedModel):
+            ss.run(self.tiny, model=fake, preset_id="turbo_8step", cfg=1.0)
         identify.assert_not_called()
 
     # ------------------------------------------------------------------ m4

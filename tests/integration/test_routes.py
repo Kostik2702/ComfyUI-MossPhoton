@@ -45,12 +45,19 @@ class HandlerTest(unittest.TestCase):
         self.assertEqual((status, payload["error"]["code"]), (404, "invalid_preset"))
 
     def test_bad_override_is_400_invalid_override(self):
-        for query in ({"cfg": "abc"}, {"steps": "1.5"}, {"cfg": "nan"}, {"steps": "5000"}, {"cfg": "99"},
-                      {"slg_mode": "nope"}, {"slg_start": "0.9", "slg_end": "0.1"}):
+        for query in ({"cfg": "abc"}, {"steps": "1.5"}, {"cfg": "nan"}, {"slg_mode": "nope"}):
             with self.subTest(query=query):
                 status, payload = routes.handle_resolved("reference", query)
                 self.assertEqual((status, payload["error"]["code"]), (400, "invalid_override"))
                 self.assertEqual(payload["error"]["severity"], "error")
+
+    def test_a_value_the_run_would_adjust_is_200_with_a_warning(self):
+        """MP-84: the run moves such a value to the nearest usable one (``setting_adjusted``); the panel says the same."""
+        for query in ({"steps": "5000"}, {"cfg": "99"}, {"slg_start": "0.9", "slg_end": "0.1"}):
+            with self.subTest(query=query):
+                status, payload = routes.handle_resolved("reference", query)
+                self.assertEqual(status, 200)
+                self.assertIn("setting_adjusted", [w["code"] for w in payload["warnings"]])
 
     def test_empty_and_unknown_query_values_are_ignored(self):
         status, payload = routes.handle_resolved("reference", {"cfg": "", "whatever": "1"})

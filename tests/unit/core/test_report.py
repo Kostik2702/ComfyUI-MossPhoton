@@ -313,7 +313,8 @@ class BuilderTest(unittest.TestCase):
     def test_pin_id_class_agrees_with_parse_pin(self):
         from moss_photon.core import presets
         ids = {"reference", "photo_safe", "identity_safe", "wardrobe_safe", "scene_safe", "night_photo",
-               "draft_fast", "advanced", "turbo_8step", "turbo_identity"}
+               "draft_fast", "advanced", "turbo_8step", "turbo_identity", "turbo_darkroom_portrait",
+               "turbo_darkroom_fullbody"}
         self.assertEqual(ids, set(presets.ALL_PRESET_IDS))
         for pid in sorted(ids):
             with self.subTest(preset=pid):

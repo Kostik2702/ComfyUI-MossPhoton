@@ -29,8 +29,8 @@
     {
       "id": "requires_character_lora",
       "kind": "requires_lora_role",
-      "severity": "error",
-      "reason": "missing_lora",
+      "severity": "warning",
+      "reason": "none",
       "role": "character"
     },
     {

@@ -24,17 +24,22 @@ class RouteNodeClassTest(unittest.TestCase):
         self.assertEqual(payload["effective"]["sampling"]["slg_mode"], "uncond_skip")
         self.assertEqual(payload["effective"]["sampling"]["slg_layers"], [22])
 
-    def test_the_simple_node_and_a_missing_node_still_get_400(self):
+    def test_the_simple_node_and_a_missing_node_get_the_override_dropped_with_a_warning(self):
+        """MP-84: it was HTTP 400 ``invalid_override``; the run drops the SLG override with a warning, the panel says so."""
         for query in (dict(SLG, node=SIMPLE), dict(SLG), dict(SLG, node=""), dict(SLG, node="SomethingElse"),
                       dict(SLG, node=ADVANCED.lower())):
             status, payload = routes.handle_resolved("turbo_8step", query)
-            self.assertEqual(status, 400, query)
-            self.assertEqual(payload["error"]["code"], "invalid_override")
-            self.assertIn(ADVANCED, payload["error"]["message"] + payload["error"]["fix"])
+            self.assertEqual(status, 200, query)
+            self.assertEqual(payload["effective"]["sampling"]["slg_mode"], "off")
+            adjusted = [w for w in payload["warnings"] if w["code"] == "setting_adjusted"]
+            self.assertEqual(len(adjusted), 2, "slg_mode and slg_layers")
+            self.assertIn(ADVANCED, adjusted[0]["message"] + adjusted[0]["fix"])
+            self.assertNotIn("turbo_slg_experimental", [w["code"] for w in payload["warnings"]])
 
     def test_the_flag_changes_nothing_else_for_the_advanced_node(self):
-        status, _ = routes.handle_resolved("turbo_8step", {"cfg": "3.0", "slg_mode": "uncond_skip", "node": ADVANCED})
-        self.assertEqual(status, 400)  # cfg 3 is outside the turbo bounds whatever the node is
+        status, payload = routes.handle_resolved("turbo_8step", {"cfg": "3.0", "slg_mode": "uncond_skip", "node": ADVANCED})
+        self.assertEqual(status, 200)  # cfg 3 is outside the turbo bounds whatever the node is: used, with a warning
+        self.assertIn("override_outside_bounds", [w["code"] for w in payload["warnings"]])
         status, payload = routes.handle_resolved("reference", {"cfg": "4.0", "node": ADVANCED})
         self.assertEqual(status, 200)
         self.assertEqual(payload, routes.handle_resolved("reference", {"cfg": "4.0"})[1])
@@ -48,9 +53,9 @@ class RouteNodeClassTest(unittest.TestCase):
         view = presets.effective_view("turbo_8step", dict(cfg=1.5, slg_mode="uncond_skip", slg_layers=[22]),
                                       allow_slg_override=True)
         self.assertIn("turbo_slg_experimental", [w["code"] for w in view["warnings"]])
-        with self.assertRaises(Exception) as cm:
-            presets.effective_view("turbo_8step", dict(cfg=1.5, slg_mode="uncond_skip", slg_layers=[22]))
-        self.assertEqual(cm.exception.code, "invalid_override")
+        view = presets.effective_view("turbo_8step", dict(cfg=1.5, slg_mode="uncond_skip", slg_layers=[22]))
+        self.assertEqual(view["effective"]["sampling"]["slg_mode"], "off", "without the flag the SLG override is dropped")
+        self.assertIn("setting_adjusted", [w["code"] for w in view["warnings"]])
 
 
 class JsSendsTheNodeClassTest(unittest.TestCase):

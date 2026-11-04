@@ -44,7 +44,13 @@ def _issue(code, param, message, fix, *, severity=None, detail=None):
 
 
 class MossPhotonLoRAProfile:
-    """Apply one LoRA with a constant weight, record it in a PHOTON_IDENTITY_PROFILE and chain further adapters."""
+    """Apply one LoRA with a constant weight, record it in a PHOTON_IDENTITY_PROFILE and chain further adapters.
+
+    DEPRECATED (MP-84): ordinary LoRA loaders work with the samplers as they are (phase ``all``), and MossPhotonLoRAPhase
+    chooses the sampling phase of a LoRA. This node keeps working for old graphs: nothing about it changed, the samplers
+    still read its profile."""
+
+    DEPRECATED = True
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -67,7 +73,8 @@ class MossPhotonLoRAProfile:
                     "tooltip": "Weight profile over the sampling progress. constant = strength_model for the whole run "
                                "(the verified path). phased = EXPERIMENTAL, runs only in MossPhotonSamplerAdvanced: the "
                                "weight moves from w0 to w1 between the progress a and b (smoothstep); strength_model is "
-                               "then ignored."}),
+                               "then ignored. One phased profile per chain: it stays on the character LoRA, any other "
+                               "phased request runs constant at strength_model (a warning says so)."}),
             },
             "optional": {
                 "trigger": ("STRING", {
@@ -116,8 +123,9 @@ class MossPhotonLoRAProfile:
     FUNCTION = "apply"
     CATEGORY = consts.CAT_SETUP
     DESCRIPTION = (
-        "Loads one LoRA through ComfyUI's own loader on a clone, checks how much of the file maps to MOSS and "
-        "records it with the stack order in an identity profile. Chain several nodes with profile_in; the order of "
+        "DEPRECATED: use an ordinary LoRA loader (every phase) or Moss Photon LoRA Phase (choose the phase); old graphs "
+        "keep working. Loads one LoRA through ComfyUI's own loader on a clone, checks how much of the file maps to MOSS "
+        "and records it with the stack order in an identity profile. Chain several nodes with profile_in; the order of "
         "the nodes is the order of the patches and it changes the result in the last bits.")
 
     @classmethod
@@ -144,49 +152,61 @@ class MossPhotonLoRAProfile:
         """Returns ``(model, identity_profile, clip)``.
 
         ``profile=phased`` (EXPERIMENTAL) records the plan ``w0 -> w1`` over the progress ``a .. b`` and applies NO patch to the
-        model: the Advanced sampler applies the LoRA per weight level. Raises ``unsupported_feature`` (an unknown weight
-        profile, a newer ``profile_in``, a second phased adapter in one chain, a phased adapter with the text encoder,
-        an invalid plan),
-        ``unsupported_model`` and the other model errors of ``validate_model_facts``, ``missing_required_input``
-        (text-encoder flag without ``clip``), ``incompatible_lora`` (coverage verdict error, architecture named in
-        the metadata, the unsupported SFT data-space DMD file, a second distill LoRA, ``profile_in`` of another
-        chain) and ``FileNotFoundError`` from ComfyUI for a missing file.
+        model: the Advanced sampler applies the LoRA per weight level. A chain has one phased profile (MP-73): it stays on
+        the character LoRA (the first one), and every other phased request runs CONSTANT at ``strength_model`` with the
+        warning ``phased_lora_demoted``; so does a phased request with ``apply_text_encoder`` on or a window with ``a >= b``.
+        When the node holding the character LoRA comes after a node that already took the phased slot, that earlier
+        node's LoRA is re-applied constant on this node's MODEL (its stack entry becomes constant, with the warning).
+        ``apply_text_encoder`` without a ``clip`` is ignored (``lora_setting_ignored``).
+
+        Raises only what cannot be worked around: ``unsupported_feature`` (a weight profile or role outside the lists, a
+        newer ``profile_in``, a ComfyUI that patches differently), ``unsupported_model`` and the other model errors of
+        ``validate_model_facts``, ``incompatible_lora`` (coverage verdict error, factors that do not fit their weights in 5%
+        of the found modules or more, non-finite factors, architecture named in the metadata, the unsupported SFT
+        data-space DMD file, a second distill LoRA, ``profile_in`` of another chain or without its phased adapter on the
+        MODEL) and ``FileNotFoundError`` from ComfyUI for a missing file. A smaller share of non-fitting modules is the warning
+        ``partial_lora_coverage``: they are dropped (not registered, not counted as applied) and named in the issue.
         """
         if profile not in lora.WEIGHT_PROFILE_KINDS:
             raise errors.UnsupportedFeature(_issue(
                 "unsupported_feature", "profile",
                 "weight profile %r is not available (only %s)" % (profile, ", ".join(lora.WEIGHT_PROFILE_KINDS)),
                 "set profile to constant"))
-        phased = profile == "phased"
-        if phased:
-            phase.make_plan(0, w0, w1, a, b, node=NODE_ID)  # a bad plan stops before the file is read
         if role not in lora.ROLES:
             raise errors.UnsupportedFeature(_issue(
                 "unsupported_feature", "role", "role must be one of %s, got %r" % (list(lora.ROLES), role),
-                "pick one of the listed roles"))
+                "set role to one of: %s" % ", ".join(lora.ROLES)))
+        # MP-73: a setting conflict degrades (a warning on the stack entry), it does not stop the graph.
+        phased = profile == "phased"
+        demotions = []   # (reason, detail) of every profile=phased request that runs constant; the index is known later
+        notes = []       # other ignored settings
+        if phased:
+            try:
+                phase.make_plan(0, w0, w1, a, b, node=NODE_ID)
+            except errors.UnsupportedFeature as exc:
+                if not {"a", "b"} <= set(exc.issue.detail or ()):   # a value outside its widget range: only an API caller
+                    raise
+                phased = False
+                demotions.append(("invalid_window", {"a": float(a), "b": float(b)}))
         te_requested = bool(apply_text_encoder)
+        if te_requested and clip is None:
+            notes.append(_issue(
+                "lora_setting_ignored", "apply_text_encoder",
+                "apply_text_encoder is on but no clip is connected: the text-encoder part of the file is not applied",
+                "connect clip to this node, or switch apply_text_encoder off to drop this note"))
+            te_requested = False
+        if phased and te_requested:
+            phased = False
+            demotions.append(("apply_text_encoder", {}))
         te_strength = te_requested and float(strength_clip) != 0.0
         zero = (float(w0) == 0.0 and float(w1) == 0.0) if phased else float(strength_model) == 0.0
         if lora_name in (None, "", "none") or (zero and not te_strength):
             return self._pass_through(model, lora_name, profile_in, clip)
-        if phased and te_requested:
-            raise errors.UnsupportedFeature(_issue(
-                "unsupported_feature", "apply_text_encoder",
-                "a phased LoRA weight patches the transformer only", "switch apply_text_encoder off or use profile=constant"))
 
         facts = adapter.probe_model(model)
         errors.raise_first_error(adapter.validate_model_facts(facts, node=NODE_ID, slg_requested=False))
         if profile_in is not None:
             lora.check_profile_in(profile_in, facts.lora_stack_attachment, node=NODE_ID)
-            if phased and profile_in.get("phase_plan") is not None:
-                raise errors.UnsupportedFeature(_issue(
-                    "unsupported_feature", "profile",
-                    "the chain already has a phased LoRA (stack[%d]); one phased adapter per chain is supported"
-                    % profile_in["phase_plan"]["stack_index"], "set this node to profile=constant"))
-        if te_requested and clip is None:
-            raise errors.MissingRequiredInput(_issue(
-                "missing_required_input", "clip", "apply_text_encoder is on but no clip is connected",
-                "connect the CLIP of the text encoder to this node or switch apply_text_encoder off"))
 
         path = _resolve_path(lora_name)
         desc = lora.describe_file(path, mode=fingerprint, interrupt_check=_interrupt_check())
@@ -194,6 +214,13 @@ class MossPhotonLoRAProfile:
         issues = lora.distill_issues(role, sha, desc["basename"], node=NODE_ID)
         errors.raise_first_error(issues)  # the unsupported SFT data-space DMD file stops before the tensors are loaded
         known = lora.distill_entry(sha)
+        slot = "take"
+        if phased and profile_in is not None:
+            # the chain has one phased profile and it stays on the character LoRA (the first one); MP-73
+            slot = lora.phased_slot_action(profile_in, lora.effective_role(role, sha) == "character")
+            if slot == "demote_new":
+                phased = False
+                demotions.append(("another_phased_lora", {}))
         if known is not None and role != "distill":
             _log.warning("[MossPhoton] %s is the known 8-step distill LoRA %s but its role is %s; presets read "
                          "the role, so set role to distill", desc["basename"], known["name"], role)
@@ -209,16 +236,41 @@ class MossPhotonLoRAProfile:
             raise errors.IncompatibleLora(_issue(
                 "incompatible_lora", "lora_name",
                 "%s names the architecture %r in its metadata, not MOSS" % (desc["basename"], parsed["architecture_value"]),
-                "use a LoRA trained for moss_image",
+                "pick a LoRA trained for moss_image in lora_name",
                 detail={"architecture": parsed["architecture_value"]}))
 
         mapping, patch_dict = lora.map_lora_patches(model, sd, clip=clip if te_requested else None)
+        counts = {"key_found": mapping.key_found, "shape_ok": mapping.shape_ok, "applied": mapping.modules_mapped,
+                  "shape_unchecked": mapping.shape_unchecked}
+        math_verdict = lora.shape_verdict(mapping)
+        if math_verdict["verdict"] == "error":
+            bad = list(mapping.nonfinite) + list(mapping.shape_mismatch)
+            what = ("%d module(s) with NaN or Inf factors" % len(mapping.nonfinite)) if mapping.nonfinite else (
+                "%d of %d modules found in the model do not fit their weights" % (len(mapping.shape_mismatch),
+                                                                                  mapping.key_found))
+            raise errors.IncompatibleLora(_issue(
+                "incompatible_lora", "lora_name",
+                "%s: %s (first: %s)" % (desc["basename"], what, "; ".join(bad[:3])),
+                "pick a LoRA trained for this MOSS model in lora_name, or re-export the file (module list in detail)",
+                detail=dict(counts, shape_mismatch=list(mapping.shape_mismatch[:20]),
+                            shape_mismatch_total=len(mapping.shape_mismatch),
+                            nonfinite=list(mapping.nonfinite[:20]), nonfinite_total=len(mapping.nonfinite))))
+        if math_verdict["verdict"] == "warn":
+            issues.append(_issue(
+                "partial_lora_coverage", "lora_name",
+                "%s: %d of %d modules found in the model do not fit their weights and are NOT applied (first: %s)"
+                % (desc["basename"], len(mapping.shape_mismatch), mapping.key_found, "; ".join(mapping.shape_mismatch[:3])),
+                "the rest is applied; re-export the file or accept a LoRA that is partly inactive",
+                detail=dict(counts, shape_mismatch=list(mapping.shape_mismatch[:20]),
+                            shape_mismatch_total=len(mapping.shape_mismatch), ratio=math_verdict["share"])))
         verdict = lora.coverage_verdict(mapping.modules_total, mapping.modules_mapped, allow_low=bool(allow_low_coverage))
         if verdict["verdict"] == "error":
             raise errors.IncompatibleLora(_issue(
                 "incompatible_lora", "lora_name",
                 "this file maps %d/%d modules to MOSS" % (mapping.modules_mapped, mapping.modules_total),
-                "use a LoRA trained for moss_image (file may be misfiled: %s)" % desc["basename"],
+                "pick a LoRA trained for moss_image in lora_name (file may be misfiled: %s)%s" % (
+                    desc["basename"], ", or switch allow_low_coverage on if you know it is right"
+                    if mapping.modules_mapped > 0 else ""),
                 detail={"modules_mapped": mapping.modules_mapped, "modules_total": mapping.modules_total,
                         "tensors_total": mapping.tensors_total}))
         if verdict["code"] is not None:
@@ -276,6 +328,16 @@ class MossPhotonLoRAProfile:
 
         prior_stack = copy.deepcopy(profile_in["stack"]) if profile_in is not None else []
         index = len(prior_stack)
+        for reason, detail in demotions:
+            issues.append(lora.phased_demoted_issue(reason, index, float(strength_model), node=NODE_ID, **detail))
+        issues.extend(notes)
+        for degraded in issues[len(issues) - len(demotions) - len(notes):]:
+            _log.warning("%s", degraded.format())
+        prior_att = profile_in["attachment"] if profile_in is not None else None
+        prior_entries = copy.deepcopy(prior_att["entries"]) if prior_att is not None else []
+        demoted_adapter = None
+        if phased and slot == "demote_prior":
+            demoted_adapter = self._demote_prior(model, profile_in, prior_stack, prior_entries)
         plan = phase.make_plan(index, w0, w1, a, b, node=NODE_ID) if phased else None
         strength_clip_used = float(strength_clip) if te_requested else 0.0
         hints = [t.strip() for t in str(trigger or "").split(",") if t.strip()]
@@ -292,43 +354,73 @@ class MossPhotonLoRAProfile:
         entry["warnings"] = entry["warnings"] + lora.issues_to_dicts(stack_issues)
 
         entries_before = lora.patch_entries_of(model)
+        base_model, expected = model, 0 if phased else mapping.model_entries
+        if demoted_adapter is not None:
+            # the earlier node's LoRA was phased and the character LoRA takes the slot: it is applied constant here
+            base_model = lora_phase.demote_to_constant(model, demoted_adapter, prior_stack[demoted_adapter.stack_index]["strength_model"])
+            expected += demoted_adapter.patch_entries
         if phased:
             # EXPERIMENTAL: no patch goes onto the MODEL; the adapter rides on it and the Advanced sampler applies it
             # per weight level on clones (lora_phase.py). The MODEL's patches and patches_uuid stay what they were.
-            new_model, new_clip = model.clone(), None
+            new_model, new_clip = base_model.clone(), None
             lora_phase.attach_adapter(new_model, lora_phase.PhaseAdapter(
                 stack_index=index, basename=desc["basename"], size=desc["size"], sha256=sha, patch_dict=patch_dict,
-                metadata=meta or None, patch_entries=mapping.model_entries))
+                metadata=meta or None, patch_entries=mapping.model_entries, strength_model=float(strength_model)))
         else:
             new_model, new_clip = lora.apply_patches(
-                model, clip if te_requested else None, patch_dict, float(strength_model), strength_clip_used,
+                base_model, clip if te_requested else None, patch_dict, float(strength_model), strength_clip_used,
                 meta or None)
         entries_after = lora.patch_entries_of(new_model)
-        if entries_after - entries_before != (0 if phased else mapping.model_entries):
+        if entries_after - entries_before != expected:
             raise errors.UnsupportedFeature(_issue(
                 "unsupported_feature", "lora_name",
                 "add_patches added %d entries, the mapper accepted %d; this ComfyUI patches differently from the "
-                "tested 0.42.0" % (entries_after - entries_before, mapping.model_entries),
+                "tested 0.42.0" % (entries_after - entries_before, expected),
                 "update MossPhoton for this ComfyUI version"))
 
-        prior_att = profile_in["attachment"] if profile_in is not None else None
         baseline = lora.provenance_baseline(prior_att, patches_uuid=model.patches_uuid, patch_entries=entries_before)
         att = lora.build_attachment(
-            (prior_att["entries"] if prior_att is not None else []) + [lora.attachment_entry_of(entry)],
+            prior_entries + [lora.attachment_entry_of(entry)],
             patches_uuid=new_model.patches_uuid, patch_entries_total=entries_after, baseline_entries=baseline)
         new_model.set_attachments(consts.ATTACH_LORA_STACK, lora.attachment_json(att))
         new_profile = lora.build_identity_profile(
             prior_stack + [entry], attachment=att, model_identity=model_identity,
             phase_plan=phase.plan_to_dict(plan) if phased else (profile_in or {}).get("phase_plan"))
 
-        _log.info("[MossPhoton] %s: role %s, %s, %d/%d modules mapped, %d patch entries, %s",
+        _log.info("[MossPhoton] %s: role %s, %s, %d/%d modules mapped (key found %d, shape ok %d, applied %d), "
+                  "%d patch entries, %s",
                   desc["basename"], role,
                   "PHASED (experimental) %g -> %g over progress %g..%g" % (plan.w0, plan.w1, plan.a, plan.b) if phased
                   else "strength %g" % float(strength_model),
-                  mapping.modules_mapped, mapping.modules_total, mapping.model_entries,
+                  mapping.modules_mapped, mapping.modules_total, mapping.key_found, mapping.shape_ok,
+                  mapping.modules_mapped, mapping.model_entries,
                   "text encoder on" if mapping.te_entries else "transformer only")
         _log.info("[MossPhoton] %s", lora.stack_journal(new_profile["stack"]))
         return (new_model, new_profile, new_clip if te_requested else clip)
+
+    @staticmethod
+    def _demote_prior(model, profile_in, prior_stack, prior_entries):
+        """MP-73: the chain's phased entry is not a character LoRA and this node's is, so the earlier entry gives the phased
+        profile up. Edits the COPIES ``prior_stack`` / ``prior_entries`` (the incoming profile is never touched): the entry
+        becomes constant at the ``strength_model`` its own node had, with the warning. Returns the ``PhaseAdapter`` the MODEL
+        carries for it; the caller re-applies its patches constant on the new MODEL. Raises ``incompatible_lora`` when the
+        MODEL does not carry the adapter the profile describes (the chain was wired from different nodes)."""
+        idx = profile_in["phase_plan"]["stack_index"]
+        prior = prior_stack[idx]
+        carried = lora_phase.adapter_of(model)
+        errors.raise_first_error(lora_phase.check_adapter(
+            carried, prior, phase.plan_from_dict(profile_in["phase_plan"], node=NODE_ID), node=NODE_ID))
+        nominal = float(carried.strength_model if carried.strength_model is not None else prior["strength_model"])
+        prior["strength_model"] = nominal
+        prior["weight_profile"] = {"kind": "constant", "w": nominal}
+        prior_entries[idx]["strength_model"] = nominal
+        fresh = [i for i in lora.check_stack(prior_stack, node=NODE_ID)
+                 if i.code == "lora_strength_outside_verified_range" and i.detail and i.detail.get("index") == idx]
+        note = lora.phased_demoted_issue("another_phased_lora", idx, nominal, node=NODE_ID)
+        _log.warning("%s", note.format())
+        prior["warnings"] = ([w for w in prior["warnings"] if w["code"] != "lora_strength_outside_verified_range"]
+                             + lora.issues_to_dicts(fresh) + lora.issues_to_dicts([note]))
+        return carried
 
     @staticmethod
     def _pass_through(model, lora_name, profile_in, clip):
@@ -341,4 +433,4 @@ class MossPhotonLoRAProfile:
 
 
 NODE_CLASS_MAPPINGS = {NODE_ID: MossPhotonLoRAProfile}
-NODE_DISPLAY_NAME_MAPPINGS = {NODE_ID: "Moss Photon LoRA Profile"}
+NODE_DISPLAY_NAME_MAPPINGS = {NODE_ID: "Moss Photon LoRA Profile (deprecated)"}

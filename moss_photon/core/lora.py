@@ -29,12 +29,19 @@ __all__ = [
     "build_attachment", "attachment_json", "build_stack_entry", "build_identity_profile", "empty_identity_profile",
     "validate_identity_profile", "profile_digest", "check_profile_in", "stack_journal", "issues_to_dicts",
     "load_lora_state", "map_lora", "map_lora_patches", "apply_patches", "StateCache", "STATE_CACHE_SLOTS",
+    "SHAPE_MISMATCH_ERROR_SHARE", "effective_role", "check_patch_math", "shape_verdict", "boost_patches",
+    "strip_trainer_flags", "validate_mapping", "plan_patches",
 ]
 
 NODE = consts.NODE_IDS[3]  # "MossPhotonLoRAProfile"
 
 COVERAGE_OK = 0.95   # ratio >= this: ok (design 1.9)
 COVERAGE_MIN = 0.50  # COVERAGE_MIN <= ratio < COVERAGE_OK: warning; below: error unless allow_low
+# MP-60 (audit F01): a file whose factors do not fit the model weights in this share of the modules it found there (or
+# more) is incompatible. It mirrors COVERAGE_OK: a file may already lose 5% of its modules to name mapping and still be
+# "ok", so a smaller shape loss is a warning that names the modules, a larger one is the wrong model or a corrupt file.
+SHAPE_MISMATCH_ERROR_SHARE = 0.05
+_MAX_LISTED_MISMATCHES = 20
 
 WEIGHT_SUFFIXES = (".lora_A.weight", ".lora_B.weight", ".lora_A", ".lora_B", ".lora_down.weight", ".lora_up.weight",
                    ".lokr_w1", ".lokr_w2", ".lokr_w1_a", ".lokr_w1_b", ".lokr_w2_a", ".lokr_w2_b", ".lokr_t2",
@@ -153,19 +160,31 @@ class MappingResult:
     layers_missing: tuple
     unmapped_examples: tuple
     key_format: str
+    # MP-60 (audit F01): key found / shape ok / applied are three different numbers. ``modules_mapped`` is ``applied``:
+    # the entries that passed the math check and are registered. ``key_found`` counts the entries whose weight key is in
+    # the model (or clip) before that check; ``shape_ok`` is the part of ``applied`` whose factors were proven to fit
+    # (the rest, ``shape_unchecked``, is an adapter kind this module has no shape rule for). ``shape_mismatch`` /
+    # ``nonfinite`` name the entries that were dropped, as ``"<weight key>[slice]: <reason>"``.
+    key_found: int = 0
+    shape_ok: int = 0
+    shape_unchecked: int = 0
+    shape_mismatch: tuple = ()
+    nonfinite: tuple = ()
 
 
 def _key_name(patch_key):
     return patch_key if isinstance(patch_key, str) else patch_key[0]
 
 
-def summarize_mapping(tensor_keys, *, accepted_model, accepted_te, mapper_names, num_layers, te_active):
+def summarize_mapping(tensor_keys, *, accepted_model, accepted_te, mapper_names, num_layers, te_active,
+                      shape_mismatch=(), nonfinite=(), unchecked=0):
     """Pure core of ``map_lora``: build a ``MappingResult`` from key names only.
 
     ``accepted_model`` / ``accepted_te``: the native patch-dict keys (str or ``(key, offset, ...)`` tuples) whose
-    weight key exists in the model / clip state dict (the ``add_patches`` filter). ``mapper_names``: the module
-    names the native key maps know. ``num_layers``: model layers or ``None``. ``tensor_keys``: the (converted)
-    LoRA keys.
+    weight key exists in the model / clip state dict (the ``add_patches`` filter) AND whose factors passed
+    ``check_patch_math``. ``mapper_names``: the module names the native key maps know. ``num_layers``: model layers or
+    ``None``. ``tensor_keys``: the (converted) LoRA keys. ``shape_mismatch`` / ``nonfinite``: the labels of the entries
+    ``check_patch_math`` rejected (found in the model, not accepted); ``unchecked``: accepted entries it could not verify.
     """
     tensor_keys = list(tensor_keys)
     modules = weight_modules(group_lora_modules(tensor_keys))
@@ -195,12 +214,40 @@ def summarize_mapping(tensor_keys, *, accepted_model, accepted_te, mapper_names,
         layers_missing=missing,
         unmapped_examples=unmapped,
         key_format=classify_key_format(tensor_keys),
+        key_found=len(accepted_model) + len(accepted_te) + len(shape_mismatch) + len(nonfinite),
+        shape_ok=len(accepted_model) + len(accepted_te) - int(unchecked),
+        shape_unchecked=int(unchecked),
+        shape_mismatch=tuple(shape_mismatch),
+        nonfinite=tuple(nonfinite),
     )
+
+
+def shape_verdict(mapping):
+    """``{"verdict": ok|warn|error, "share", "code"}`` for the shape and finiteness check of one file (MP-60, F01).
+
+    ``error`` / ``incompatible_lora``: any non-finite factor (a diverged or corrupt training run, the rest of the file
+    cannot be trusted), no applied entry left, or ``len(shape_mismatch) / key_found >= SHAPE_MISMATCH_ERROR_SHARE``.
+    ``warn`` / ``partial_lora_coverage``: a smaller share of mismatches; those modules are dropped, never counted as
+    applied, and named in the issue. ``ok``: none. ``allow_low_coverage`` does not apply: it is about name mapping.
+    """
+    found = mapping.key_found
+    share = (len(mapping.shape_mismatch) / found) if found else 0.0
+    if mapping.nonfinite or (mapping.shape_mismatch and (mapping.modules_mapped <= 0
+                                                          or share >= SHAPE_MISMATCH_ERROR_SHARE)):
+        return {"verdict": "error", "share": share, "code": "incompatible_lora"}
+    if mapping.shape_mismatch:
+        return {"verdict": "warn", "share": share, "code": "partial_lora_coverage"}
+    return {"verdict": "ok", "share": share, "code": None}
 
 
 def coverage_block(mapping, verdict):
     """The ``stack[].coverage`` object (design 2.4). ``verdict`` is a ``coverage_verdict`` result that is not an error."""
     return {
+        "key_found": mapping.key_found,
+        "shape_ok": mapping.shape_ok,
+        "shape_unchecked": mapping.shape_unchecked,
+        "applied": mapping.modules_mapped,
+        "shape_mismatch": list(mapping.shape_mismatch[:_MAX_LISTED_MISMATCHES]),
         "tensors_total": mapping.tensors_total,
         "modules_total": mapping.modules_total,
         "modules_mapped": mapping.modules_mapped,
@@ -212,6 +259,178 @@ def coverage_block(mapping, verdict):
         "te_modules_ignored": mapping.te_modules_ignored,
         "unmapped_examples": list(mapping.unmapped_examples),
     }
+
+
+# --------------------------------------------------------------------------- patch math (MP-60, audit F01)
+# The native adapters catch a delta that does not fit its weight, log it and return the weight unchanged, so a file
+# whose factors do not fit still maps by name and would be counted as applied. These checks run BEFORE add_patches on
+# the very patch dict that would be registered; tensors are only duck-typed (``.shape``, ``.ndim``, ``.isfinite()``).
+_UNCHECKED = object()
+
+
+def _patch_label(patch_key):
+    if isinstance(patch_key, str):
+        return patch_key
+    offset = patch_key[1] if len(patch_key) > 1 else None
+    if offset is None:
+        return patch_key[0]
+    return "%s[dim%d %d:%d]" % (patch_key[0], offset[0], offset[1], offset[1] + offset[2])
+
+
+def _target_shape(full, offset):
+    """Shape of the weight (slice) a patch lands on, or ``None`` when the offset does not fit the weight."""
+    if offset is None:
+        return tuple(full)
+    dim, start, length = int(offset[0]), int(offset[1]), int(offset[2])
+    if not 0 <= dim < len(full) or start < 0 or length <= 0 or start + length > full[dim]:
+        return None
+    shape = list(full)
+    shape[dim] = length
+    return tuple(shape)
+
+
+def _fits(out_dim, in_flat, target):
+    """The delta ``out_dim x in_flat`` is the target exactly: leading dim equal and the same element count. The native
+    ``reshape`` alone would accept a transposed delta of the same size."""
+    return len(target) >= 1 and out_dim == target[0] and out_dim * in_flat == math.prod(target)
+
+
+def _lora_problem(w, target):
+    if len(w) != 6:
+        return _UNCHECKED
+    up, down, _alpha, mid, _dora, reshape = w
+    if reshape is not None:
+        target = tuple(int(v) for v in reshape)
+    if up.ndim < 2 or down.ndim < 2:
+        return "factors need 2 or more dims, got up %s and down %s" % (tuple(up.shape), tuple(down.shape))
+    if down.shape[0] < 1:
+        return "rank is 0"
+    if mid is None:
+        if up.shape[1] != down.shape[0]:
+            return "rank differs: up %s, down %s" % (tuple(up.shape), tuple(down.shape))
+        in_flat = math.prod(down.shape[1:])
+    else:
+        if mid.ndim < 4 or up.shape[1] != mid.shape[0] or down.shape[0] != mid.shape[1]:
+            return "rank differs: up %s, mid %s, down %s" % (tuple(up.shape), tuple(mid.shape), tuple(down.shape))
+        in_flat = down.shape[1] * math.prod(mid.shape[2:])
+    if not _fits(up.shape[0], in_flat, target):
+        return "delta %dx%d does not fit the weight %s (up %s, down %s)" % (
+            up.shape[0], in_flat, target, tuple(up.shape), tuple(down.shape))
+    return None
+
+
+def _loha_problem(w, target):
+    if len(w) != 8 or w[5] is not None or w[6] is not None:
+        return _UNCHECKED  # tucker variants have no rule here
+    w1a, w1b, _alpha, w2a, w2b = w[:5]
+    for a, b in ((w1a, w1b), (w2a, w2b)):
+        if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
+            return "hada factors do not chain: %s x %s" % (tuple(a.shape), tuple(b.shape))
+    if (w1a.shape[0], w1b.shape[1]) != (w2a.shape[0], w2b.shape[1]):
+        return "the two hada products differ in shape"
+    if not _fits(w1a.shape[0], w1b.shape[1], target):
+        return "hada delta %dx%d does not fit the weight %s" % (w1a.shape[0], w1b.shape[1], target)
+    return None
+
+
+def _lokr_problem(w, target):
+    if len(w) != 9 or w[7] is not None:
+        return _UNCHECKED
+    w1, w2, _alpha, w1a, w1b, w2a, w2b = w[:7]
+    sides = []
+    for full, a, b in ((w1, w1a, w1b), (w2, w2a, w2b)):
+        if full is not None:
+            if full.ndim < 2:
+                return _UNCHECKED
+            sides.append((full.shape[0], math.prod(full.shape[1:])))
+        elif a is None or b is None or a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
+            return "lokr factors are missing or do not chain"
+        else:
+            sides.append((a.shape[0], b.shape[1]))
+    (r1, c1), (r2, c2) = sides
+    if not _fits(r1 * r2, c1 * c2, target):
+        return "lokr delta %dx%d does not fit the weight %s" % (r1 * r2, c1 * c2, target)
+    return None
+
+
+def _plain_problem(patch, target):
+    kind, data = patch
+    tensor = data[0]
+    if kind == "diff":
+        if len(data) > 1 and isinstance(data[1], dict) and data[1].get("pad_weight"):
+            return _UNCHECKED
+    elif kind != "set":
+        return _UNCHECKED
+    if tuple(tensor.shape) != tuple(target):
+        return "%s tensor %s does not match the weight %s" % (kind, tuple(tensor.shape), tuple(target))
+    return None
+
+
+def _shape_problem(patch, target):
+    """``None`` (fits), a message (does not) or ``_UNCHECKED`` (an adapter kind without a shape rule)."""
+    name = getattr(patch, "name", None)
+    weights = getattr(patch, "weights", None)
+    if name == "lora" and weights is not None:
+        return _lora_problem(weights, target)
+    if name == "loha" and weights is not None:
+        return _loha_problem(weights, target)
+    if name == "lokr" and weights is not None:
+        return _lokr_problem(weights, target)
+    if isinstance(patch, tuple) and len(patch) == 2 and isinstance(patch[1], tuple) and patch[1]:
+        return _plain_problem(patch, target)
+    return _UNCHECKED
+
+
+def _non_finite(obj):
+    """The first non-finite number or tensor inside a patch value, as text, else ``None``."""
+    if hasattr(obj, "shape") and hasattr(obj, "isfinite"):
+        if getattr(obj, "is_meta", False):  # header-only specimens (tests/local) carry no values to look at
+            return None
+        return "a factor tensor %s has NaN or Inf" % (tuple(obj.shape),) if not bool(obj.isfinite().all()) else None
+    if isinstance(obj, float):
+        return None if math.isfinite(obj) else "a scalar is %r" % (obj,)
+    if isinstance(obj, (tuple, list)):
+        for item in obj:
+            found = _non_finite(item)
+            if found:
+                return found
+    return None
+
+
+def check_patch_math(patch_dict, shape_of):
+    """``(shape_bad, nonfinite, unchecked)`` of the patch dict of ONE LoRA file, before anything is registered.
+
+    ``shape_of(weight_key)`` gives the shape of that weight in the model (or clip), ``None`` for a key that is not
+    there; such entries are not checked (``add_patches`` drops them anyway). Each entry is checked against the weight or
+    the fused-qkv slice it lands on (the ``(key, (dim, start, length))`` form): a LoRA / LoHa / LoKr delta must have the
+    exact leading dim and element count, the ranks of up / mid / down must chain, a ``diff`` / ``set`` tensor must equal
+    the weight. Every tensor and scalar of the entry must be finite (alpha, dora scale, mid included). Returns
+    ``{patch_key: reason}`` for the first two and the list of patch keys no rule exists for (counted as accepted, but
+    reported as unchecked, never as ``shape_ok``).
+    """
+    shape_bad, nonfinite, unchecked = {}, {}, []
+    for patch_key, patch in patch_dict.items():
+        name = patch_key if isinstance(patch_key, str) else patch_key[0]
+        full = shape_of(name)
+        if full is None:
+            continue
+        offset = None if isinstance(patch_key, str) or len(patch_key) < 2 else patch_key[1]
+        target = _target_shape(full, offset)
+        if target is None:
+            shape_bad[patch_key] = "the slice %s does not fit the weight %s" % (offset, tuple(full))
+            continue
+        problem = _shape_problem(patch, target)
+        if problem is _UNCHECKED:
+            unchecked.append(patch_key)
+        elif problem is not None:
+            shape_bad[patch_key] = problem
+            continue
+        values = getattr(patch, "weights", patch)
+        found = _non_finite(values)
+        if found:
+            nonfinite[patch_key] = found
+            unchecked = [k for k in unchecked if k != patch_key]
+    return shape_bad, nonfinite, unchecked
 
 
 # --------------------------------------------------------------------------- metadata, sidecar, files
@@ -397,7 +616,7 @@ def distill_issues(role, sha256, basename, *, node=NODE):
         return [errors.make_issue(
             row.get("reason_code", "incompatible_lora"), node, "lora_name",
             "%s (%s...) is not supported: %s" % (row["name"], sha256[:8], row.get("reason", "incompatible distill LoRA")),
-            "use the 8-step DMD2 LoRA (lodestones-8-steps-dmd2-lora) with the turbo presets",
+            "pick another file in lora_name: the 8-step DMD2 LoRA (lodestones-8-steps-dmd2-lora) goes with the turbo presets",
             detail={"sha256": sha256, "name": row["name"]})]
     if role == "distill" and row is None:
         why = "its sha256 is unknown" if sha256 else "its sha256 was not computed (fingerprint mode)"
@@ -414,6 +633,13 @@ def distill_issues(role, sha256, basename, *, node=NODE):
             % row["role"],
             detail={"sha256": sha256, "role": role, "expected_role": row["role"]})]
     return []
+
+
+def effective_role(role, sha256):
+    """The role a requirement rule must use (MP-60, audit F03): ``distill`` for a file whose sha256 is in
+    ``consts.KNOWN_DISTILL_LORAS``, whatever role the user set; an unknown or missing hash keeps the user's role. The
+    stored role is never rewritten: the profile keeps what the user chose and the issues name the difference."""
+    return "distill" if isinstance(sha256, str) and sha256 in consts.KNOWN_DISTILL_LORAS else role
 
 
 def base_match_of(trained_on, family):
@@ -435,9 +661,9 @@ def check_stack(entries, *, node=NODE):
     """Stack sanity over profile ``stack`` entries in order; each issue carries ``detail["index"]`` of the entry it is about.
 
     ``duplicate_lora`` (same sha256, or basename+size without one), ``multiple_character_loras`` (warning, second
-    and later), a second ``distill`` role (``incompatible_lora`` error: "use one at a time", docs/03-turbo.md R-T5),
-    and ``lora_strength_outside_verified_range`` for ``strength_model`` outside the entry's sidecar
-    ``verified_strength``.
+    and later), a second ``distill`` role (the warning ``multiple_distill_loras``: "use one at a time", docs/03-turbo.md R-T5;
+    an error before MP-84, a setting conflict degrades since then), and ``lora_strength_outside_verified_range`` for
+    ``strength_model`` outside the entry's sidecar ``verified_strength``.
     """
     mk = errors.make_issue
     out, seen, characters, distills = [], {}, [], []
@@ -452,19 +678,22 @@ def check_stack(entries, *, node=NODE):
                           detail={"index": idx, "same_as": seen[key]}))
         else:
             seen[key] = idx
-        if entry["role"] == "character":
+        role = effective_role(entry["role"], entry["lora"]["sha256"])  # a known distill file is one, whatever its role
+        if role == "character":
             if characters:
                 out.append(mk("multiple_character_loras", node, "role",
                               "%s is a second character LoRA (first at index %d)" % (name, characters[0]),
                               "keep one character LoRA or set the other role to style / wardrobe / scene / other",
                               detail={"index": idx, "first": characters[0]}))
             characters.append(idx)
-        if entry["role"] == "distill":
+        if role == "distill":
             if distills:
-                out.append(mk("incompatible_lora", node, "role",
-                              "%s is a second distill LoRA (first at index %d); distill LoRAs are used one at a time"
-                              % (name, distills[0]),
-                              "keep one distill LoRA in the stack",
+                out.append(mk("multiple_distill_loras", node, "role",
+                              "%s is a second distill LoRA (first at index %d)%s; distill LoRAs are meant to be used one "
+                              "at a time and both are applied" % (name, distills[0],
+                                 "" if entry["role"] == "distill" else " - it is a known distill file loaded with "
+                                 "role '%s'" % entry["role"]),
+                              "set lora_name to none on one of the two distill nodes to drop this note",
                               detail={"index": idx, "first": distills[0]}))
             distills.append(idx)
         vs = (entry.get("sidecar") or {}).get("verified_strength")
@@ -481,6 +710,40 @@ def check_stack(entries, *, node=NODE):
                               detail={"index": idx, "strength_model": strength, "verified": [vs["min"], vs["max"]]}))
                 break
     return out
+
+
+def phased_slot_action(profile_in, new_is_character):
+    """Who keeps the chain's one phased profile when a node asks for ``profile=phased`` (MP-73).
+
+    ``take``: no phased entry yet. ``demote_prior``: the phased entry is not a character LoRA and the new one is (the
+    character LoRA wins; the earlier node already returned, so the new node re-applies it constant). ``demote_new``: the
+    phased entry stays (the first character LoRA, or the first phased one when no character is phased) and the new
+    request runs constant. ``new_is_character`` is the EFFECTIVE role (a known distill file is not a character LoRA)."""
+    plan = (profile_in or {}).get("phase_plan")
+    if plan is None:
+        return "take"
+    prior = profile_in["stack"][plan["stack_index"]]
+    prior_is_character = effective_role(prior["role"], prior["lora"]["sha256"]) == "character"
+    return "demote_prior" if new_is_character and not prior_is_character else "demote_new"
+
+
+def phased_demoted_issue(reason, index, strength, *, node=NODE, **detail):
+    """The ``phased_lora_demoted`` warning: the entry at stack ``index`` asked for ``profile=phased`` and runs constant at
+    ``strength``. Field names and stack indices only (no file names, they are private). ``reason`` is one of
+    ``another_phased_lora`` (a chain has one phased profile: the first character LoRA, else the first phased request),
+    ``apply_text_encoder`` (a phased weight patches the transformer only), ``invalid_window`` (needs ``a`` < ``b``)."""
+    why = {
+        "another_phased_lora": ("a chain has one phased profile, it goes to the first character LoRA (else to the first "
+                                "phased request)", "set profile=constant on this node to drop this note"),
+        "apply_text_encoder": ("a phased weight patches the transformer only and apply_text_encoder is on",
+                               "switch apply_text_encoder off to keep it phased"),
+        "invalid_window": ("the window needs a < b, got a = %s, b = %s" % (detail.get("a"), detail.get("b")),
+                           "raise b above a to keep it phased"),
+    }[reason]
+    return errors.make_issue(
+        "phased_lora_demoted", node, "profile",
+        "stack[%d] asked for profile=phased and runs constant at strength_model %g: %s" % (index, strength, why[0]),
+        why[1], detail=dict(detail, reason=reason, index=index, strength_model=float(strength)))
 
 
 def issues_to_dicts(issues):
@@ -595,6 +858,7 @@ def build_identity_profile(stack, *, attachment, model_identity, phase_plan=None
 
     ``phase_plan`` is ``None`` (every adapter constant) or ``phase.plan_to_dict(plan)`` of the one phased adapter."""
     roles = [e["role"] for e in stack]
+    effective = [effective_role(e["role"], e["lora"]["sha256"]) for e in stack]
     profile = {
         "schema_version": consts.IDENTITY_PROFILE_SCHEMA,
         "kind": "photon_identity_profile",
@@ -602,8 +866,8 @@ def build_identity_profile(stack, *, attachment, model_identity, phase_plan=None
         "summary": {
             "count": len(stack),
             "roles": roles,
-            "has_character": "character" in roles,
-            "has_distill": "distill" in roles,
+            "has_character": "character" in effective,
+            "has_distill": "distill" in effective,
             "te_applied": any(e["applied_to"]["text_encoder"] for e in stack),
             "patch_entries_total": attachment["patch_entries_total"],
         },
@@ -700,8 +964,10 @@ def validate_identity_profile(p):
         if e["coverage"].get("modules_mapped", -1) < e["patch_entries"]:
             problems.append("stack[%d].coverage.modules_mapped is below patch_entries" % i)
     roles = [e.get("role") for e in stack if isinstance(e, dict)]
-    expected_summary = {"count": len(stack), "roles": roles, "has_character": "character" in roles,
-                        "has_distill": "distill" in roles, "te_applied": any(
+    effective = [effective_role(e.get("role"), e["lora"].get("sha256") if isinstance(e.get("lora"), dict) else None)
+                 for e in stack if isinstance(e, dict)]
+    expected_summary = {"count": len(stack), "roles": roles, "has_character": "character" in effective,
+                        "has_distill": "distill" in effective, "te_applied": any(
                             isinstance(e, dict) and isinstance(e.get("applied_to"), dict)
                             and e["applied_to"].get("text_encoder") for e in stack),
                         "patch_entries_total": att.get("patch_entries_total")}
@@ -842,9 +1108,12 @@ def map_lora_patches(model, lora_sd, *, clip=None):
 
     ``key map`` = ``model_lora_keys_unet`` (+ ``model_lora_keys_clip`` when ``clip`` is given), ``convert_lora``,
     ``load_lora(..., log_missing=False)``; an entry is accepted when its weight key is in the model (or clip) state
-    dict, exactly the filter of ``ModelPatcher.add_patches``. ``model`` is a ``ModelPatcher`` (only ``.model`` is
-    used), so the result is the same for a clean MODEL and one that already carries LoRAs. The patch dict is what
-    ``apply_patches`` applies, so the mapper is not run a second time.
+    dict, exactly the filter of ``ModelPatcher.add_patches``, AND ``check_patch_math`` proves its factors fit that
+    weight and are finite (MP-60). A failing entry is removed from the returned patch dict, so nothing that cannot
+    change a weight is registered or counted; it is named in ``MappingResult.shape_mismatch`` / ``nonfinite``.
+    ``model`` is a ``ModelPatcher`` (only ``.model`` is used), so the result is the same for a clean MODEL and one
+    that already carries LoRAs. The patch dict is what ``apply_patches`` applies, so the mapper is not run a second
+    time.
     """
     import comfy.lora
     import comfy.lora_convert
@@ -853,14 +1122,23 @@ def map_lora_patches(model, lora_sd, *, clip=None):
     if clip is not None:
         key_map = comfy.lora.model_lora_keys_clip(clip.cond_stage_model, key_map)
     patch_dict = comfy.lora.load_lora(converted, key_map, log_missing=False)
-    model_keys = set(model.model.state_dict().keys())
-    clip_keys = set(clip.cond_stage_model.state_dict().keys()) if clip is not None else set()
-    accepted_model = [k for k in patch_dict if _key_name(k) in model_keys]
-    accepted_te = [k for k in patch_dict if _key_name(k) in clip_keys]
+    model_shapes = {k: tuple(v.shape) for k, v in model.model.state_dict().items()}
+    clip_shapes = ({k: tuple(v.shape) for k, v in clip.cond_stage_model.state_dict().items()}
+                   if clip is not None else {})
+    shape_bad, nonfinite, unchecked = check_patch_math(
+        patch_dict, lambda name: model_shapes[name] if name in model_shapes else clip_shapes.get(name))
+    rejected = set(shape_bad) | set(nonfinite)
+    patch_dict = {k: v for k, v in patch_dict.items() if k not in rejected}
+    accepted_model = [k for k in patch_dict if _key_name(k) in model_shapes]
+    accepted_te = [k for k in patch_dict if _key_name(k) in clip_shapes]
     layers = getattr(getattr(model.model, "diffusion_model", None), "layers", None)
+    kept = set(accepted_model) | set(accepted_te)
     mapping = summarize_mapping(
         converted.keys(), accepted_model=accepted_model, accepted_te=accepted_te, mapper_names=set(key_map),
-        num_layers=len(layers) if layers is not None else None, te_active=clip is not None)
+        num_layers=len(layers) if layers is not None else None, te_active=clip is not None,
+        shape_mismatch=["%s: %s" % (_patch_label(k), why) for k, why in shape_bad.items()],
+        nonfinite=["%s: %s" % (_patch_label(k), why) for k, why in nonfinite.items()],
+        unchecked=sum(1 for k in unchecked if k in kept))
     return mapping, patch_dict
 
 
@@ -887,3 +1165,163 @@ def apply_patches(model, clip, patch_dict, strength_model, strength_clip, metada
         if metadata:
             new_clip.patcher.set_attachments("lora_metadata", metadata)
     return new_model, new_clip
+
+
+# --------------------------------------------------------------------------- darkroom boost (MP-67)
+def _lora_candidates(basename):
+    """Names of the ``loras`` folder that may be the profile's file: the basename itself, then every listed file (also in a
+    sub-folder) with that basename. The profile keeps basenames only, never the folder."""
+    import folder_paths
+    names = [basename]
+    try:
+        for name in folder_paths.get_filename_list("loras"):
+            if name.replace(chr(92), "/").rsplit("/", 1)[-1] == basename and name not in names:
+                names.append(name)
+    except Exception:  # noqa: BLE001 - a folder listing that fails only narrows the search to the plain basename
+        pass
+    return names
+
+
+def boost_patches(model, entry):
+    """``(patch_dict, metadata, reason)`` of the character LoRA a stack ``entry`` names, for the darkroom's EXTRA patch.
+
+    Finds the file in the ``loras`` folder by basename (also in a sub-folder), accepts it only when its size and, when the
+    profile has one, its sha256 equal the entry's, takes its state through the shared ``StateCache`` (no second read of a
+    file the LoRA node just loaded) and maps it with the same native mapper as the node. ``reason`` is ``None`` on success,
+    else one of ``file_not_found``, ``size_differs``, ``sha_differs``, ``load_error``, ``mapping_differs`` (the file maps to
+    another number of patch entries than the profile recorded); nothing is raised for a file problem. ``model`` is only
+    read. The patch dict is the cache's shared one: never modified.
+    """
+    import folder_paths
+    lora = entry["lora"]
+    basename, size, sha = lora["basename"], lora["size"], lora.get("sha256")
+    reason = "file_not_found"
+    for name in _lora_candidates(basename):
+        try:
+            path = folder_paths.get_full_path_or_raise("loras", name)
+        except Exception:  # noqa: BLE001 - not there under this name
+            continue
+        try:
+            desc = describe_file(path)
+        except OSError:
+            continue
+        if desc["size"] != size:
+            reason = "size_differs"
+            continue
+        if sha is not None and desc["sha256"] != sha:
+            reason = "sha_differs"
+            continue
+        try:
+            sd, meta = load_lora_state(path)
+            mapping, patch_dict = map_lora_patches(model, sd)
+        except Exception:  # noqa: BLE001 - unreadable, or not mappable: the boost is skipped, the run goes on
+            return None, None, "load_error"
+        if mapping.model_entries != entry["patch_entries"] or not patch_dict:
+            return None, None, "mapping_differs"
+        return patch_dict, (meta or None), None
+    return None, None, reason
+
+
+# --------------------------------------------------------------------------- LoRA plan (MP-84, MossPhotonLoRAPhase)
+_TRAINER_FLAGS = {"use_rslora_flag": "rsLoRA (alpha / sqrt(rank) scaling)", "use_dora_flag": "DoRA"}
+
+
+def strip_trainer_flags(state, name, *, node=NODE):
+    """The state dict without the scalar trainer flags some trainers store next to the weights (``use_rslora_flag``,
+    ``use_dora_flag``). ComfyUI maps only weights and would count each flag as an unmapped key. A flag of 0 is a plain LoRA,
+    scaled exactly as ComfyUI scales it (``alpha / rank``): it is dropped. A flag of 1 is a scaling ComfyUI does not
+    implement (rsLoRA at all; DoRA only through ``dora_scale`` keys): ``incompatible_lora``, because the LoRA would act with
+    the wrong strength without a word. A state without flags is returned as is; otherwise a new dict (the shared state is
+    never modified).
+    """
+    flags = [k for k in state if k.rsplit(".", 1)[-1] in _TRAINER_FLAGS]
+    if not flags:
+        return state
+    for key in flags:
+        value = state[key]
+        if bool(value.any()) if hasattr(value, "any") else bool(value):
+            raise errors.IncompatibleLora(errors.make_issue(
+                "incompatible_lora", node, "lora_name",
+                "%s was trained with %s, which ComfyUI does not apply: the LoRA would act with the wrong strength"
+                % (name, _TRAINER_FLAGS[key.rsplit(".", 1)[-1]]),
+                "pick a LoRA trained without that option, or merge it with its own tool first"))
+    return {k: v for k, v in state.items() if k not in flags}
+
+
+def validate_mapping(desc, parsed, mapping, *, node, allow_low=False):
+    """The checks MossPhotonLoRAProfile makes on one mapped file, for a node that applies nothing itself.
+
+    ``desc`` is ``describe_file``, ``parsed`` ``parse_lora_metadata`` of the file, ``mapping`` the ``MappingResult``.
+    Raises ``incompatible_lora`` for an architecture other than MOSS named in the metadata, factors that do not fit their
+    weights in 5% of the found modules or more, non-finite factors and a file that maps less than half of its modules (never
+    zero, also with ``allow_low``). Returns the warnings (``partial_lora_coverage`` for dropped modules or a half mapped file,
+    ``lora_low_coverage_forced``); a file that maps cleanly gives none.
+    """
+    mk = errors.make_issue
+    name = desc["basename"]
+    if parsed["architecture"] == "other":
+        raise errors.IncompatibleLora(mk(
+            "incompatible_lora", node, "lora_name",
+            "%s names the architecture %r in its metadata, not MOSS" % (name, parsed["architecture_value"]),
+            "pick a LoRA trained for moss_image in lora_name", detail={"architecture": parsed["architecture_value"]}))
+    issues = []
+    math_verdict = shape_verdict(mapping)
+    if math_verdict["verdict"] == "error":
+        bad = list(mapping.nonfinite) + list(mapping.shape_mismatch)
+        what = ("%d module(s) with NaN or Inf factors" % len(mapping.nonfinite)) if mapping.nonfinite else (
+            "%d of %d modules found in the model do not fit their weights" % (len(mapping.shape_mismatch),
+                                                                              mapping.key_found))
+        raise errors.IncompatibleLora(mk(
+            "incompatible_lora", node, "lora_name", "%s: %s (first: %s)" % (name, what, "; ".join(bad[:3])),
+            "pick a LoRA trained for this MOSS model in lora_name, or re-export the file",
+            detail={"shape_mismatch_total": len(mapping.shape_mismatch), "nonfinite_total": len(mapping.nonfinite)}))
+    if math_verdict["verdict"] == "warn":
+        issues.append(mk(
+            "partial_lora_coverage", node, "lora_name",
+            "%s: %d of %d modules found in the model do not fit their weights and are NOT applied (first: %s)"
+            % (name, len(mapping.shape_mismatch), mapping.key_found, "; ".join(mapping.shape_mismatch[:3])),
+            "the rest is applied; re-export the file or accept a LoRA that is partly inactive",
+            detail={"shape_mismatch_total": len(mapping.shape_mismatch), "ratio": math_verdict["share"]}))
+    verdict = coverage_verdict(mapping.modules_total, mapping.modules_mapped, allow_low=allow_low)
+    if verdict["verdict"] == "error":
+        raise errors.IncompatibleLora(mk(
+            "incompatible_lora", node, "lora_name",
+            "%s maps %d/%d modules to MOSS" % (name, mapping.modules_mapped, mapping.modules_total),
+            "pick a LoRA trained for moss_image in lora_name (the file may be misfiled)",
+            detail={"modules_mapped": mapping.modules_mapped, "modules_total": mapping.modules_total}))
+    if verdict["code"] is not None:
+        issues.append(mk(
+            verdict["code"], node, "lora_name",
+            "%s maps %d/%d modules to MOSS (%.0f%%)" % (name, mapping.modules_mapped, mapping.modules_total,
+                                                       100.0 * verdict["ratio"]),
+            "check that the file was trained for moss_image", detail={"ratio": verdict["ratio"]}))
+    return issues
+
+
+def plan_patches(model, entry):
+    """``(patch_dict, metadata)`` of the LoRA a plan ``entry`` (``core/lora_plan``) names, for a sampler to apply.
+
+    Finds the file by ``lora_name`` in the ``loras`` folder (ComfyUI's own ``FileNotFoundError`` when it is gone), checks that
+    it is still the file the node saw (size, and the sha256 when both sides have one: ``incompatible_lora`` otherwise),
+    takes its state through the shared ``StateCache``, drops trainer flags and maps it with the native mapper, exactly as the
+    node did. The factors were proven finite and well shaped by the node; a file that now maps nothing is
+    ``incompatible_lora``. ``model`` is only read. The patch dict is the mapper's own: never modified.
+    """
+    import folder_paths
+    node = consts.NODE_IDS_HELPERS[0]
+    path = folder_paths.get_full_path_or_raise("loras", entry["lora_name"])
+    desc = describe_file(path, mode="cached_only")
+    changed = desc["size"] != entry["size"] or (
+        entry["sha256"] is not None and desc["sha256"] is not None and desc["sha256"] != entry["sha256"])
+    if changed:
+        raise errors.IncompatibleLora(errors.make_issue(
+            "incompatible_lora", node, "lora_name",
+            "%s is not the file the LoRA Phase node saw: it changed between the node and the sampler" % desc["basename"],
+            "queue the graph again so MossPhotonLoRAPhase reads the new file"))
+    state, metadata = load_lora_state(path)
+    patch_dict = map_lora_patches(model, strip_trainer_flags(state, desc["basename"], node=node))[1]
+    if not patch_dict:
+        raise errors.IncompatibleLora(errors.make_issue(
+            "incompatible_lora", node, "lora_name", "%s maps no module to this model" % desc["basename"],
+            "pick a LoRA trained for this MOSS model in lora_name"))
+    return patch_dict, (metadata or None)

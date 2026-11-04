@@ -21,6 +21,7 @@ EXPECTED_MODULES = [
     "moss_photon.nodes.latent", "moss_photon.nodes.prompt", "moss_photon.nodes.lora",
     "moss_photon.nodes.schedule", "moss_photon.nodes.sampler",
     "moss_photon.nodes.diagnostics", "moss_photon.nodes.save",
+    "moss_photon.nodes.detailer", "moss_photon.nodes.lora_plan", "moss_photon.nodes.prompt_split",
 ]
 MY_MODULES = {"moss_photon.nodes.latent": {"MossPhotonEmptyLatent"}, "moss_photon.nodes.schedule": {"MossPhotonSchedule"}}
 
@@ -74,13 +75,15 @@ class RegistrationTest(unittest.TestCase):
                     r"(?<!^)(?=[A-Z])", " ", node_id[len("MossPhoton"):]))
 
     def test_registered_ids_are_a_subset_of_the_design_ids(self):
-        self.assertTrue(set(self.probe["ids"]) <= set(consts.NODE_IDS), self.probe["ids"])
+        self.assertTrue(set(self.probe["ids"]) <= set(consts.NODE_IDS) | set(consts.NODE_IDS_SECOND_QUEUE)
+                        | set(consts.NODE_IDS_HELPERS), self.probe["ids"])
 
     def test_all_eight_ids_exist_once_every_ticket_is_merged(self):
         pending = [m for m in EXPECTED_MODULES if not module_exists(m)]
         if pending:
             self.skipTest("PENDING modules of other tickets: %s" % ", ".join(pending))
-        self.assertEqual(sorted(self.probe["ids"]), sorted(consts.NODE_IDS))
+        self.assertEqual(sorted(self.probe["ids"]),
+                         sorted(consts.NODE_IDS + consts.NODE_IDS_SECOND_QUEUE + consts.NODE_IDS_HELPERS))
 
     def test_modules_present_import_without_comfy_or_torch(self):
         present = [m for m in EXPECTED_MODULES if module_exists(m)]

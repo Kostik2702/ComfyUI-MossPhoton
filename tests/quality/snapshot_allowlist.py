@@ -15,6 +15,12 @@ FILE_WIDGET_ALLOWLIST = {
     ("MossPhotonLoRAProfile", "lora_name"): (
         "none", "lodestones-8-steps-dmd2-lora.safetensors", "your_character_lora.safetensors",
         "your_second_lora.safetensors"),
+    # MP-84: the LoRA Phase node (same names, it also offers "none") and the stock loader the example workflows use now.
+    ("MossPhotonLoRAPhase", "lora_name"): (
+        "none", "lodestones-8-steps-dmd2-lora.safetensors", "your_character_lora.safetensors",
+        "your_second_lora.safetensors"),
+    ("LoraLoaderModelOnly", "lora_name"): (
+        "lodestones-8-steps-dmd2-lora.safetensors", "your_character_lora.safetensors", "your_second_lora.safetensors"),
 }
 
 # Any other COMBO holding a value that looks like a model file is a leak of a list nobody sanitized.

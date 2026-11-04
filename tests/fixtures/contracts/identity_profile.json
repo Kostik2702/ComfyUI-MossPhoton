@@ -37,7 +37,12 @@
         "layers_covered": 42,
         "layers_missing": [],
         "te_modules_ignored": 0,
-        "unmapped_examples": []
+        "unmapped_examples": [],
+        "key_found": 252,
+        "shape_ok": 252,
+        "shape_unchecked": 0,
+        "applied": 252,
+        "shape_mismatch": []
       },
       "trained_on": "unknown",
       "base_match": null,

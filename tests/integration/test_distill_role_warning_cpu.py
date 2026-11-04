@@ -1,5 +1,5 @@
 """MP-50: the LoRA profile node warns at load time when a known distill file is loaded with another role, and then the
-sampler's missing_lora error names that file. The file is synthetic; its sha256 is overridden to the real lodestones
+sampler's lora_not_recorded note (an error before MP-84) names that file. The file is synthetic; its sha256 is overridden to the real lodestones
 hash (the node's own hashing is not the subject)."""
 import unittest
 from unittest import mock
@@ -46,11 +46,13 @@ class DistillRoleWarningTest(unittest.TestCase):
         _, profile, _ = lora_synth.run_node(self.patcher, NAME, role="distill")
         self.assertNotIn("distill_lora_role_mismatch", self.codes(profile))
 
-    def test_the_sampler_error_then_names_the_file(self):
+    def test_the_sampler_note_then_names_the_file(self):
+        """MP-84: the sampler no longer stops (``missing_lora``); its report notes the role nobody recorded and names the file."""
         model, profile, _ = lora_synth.run_node(self.patcher, NAME, role="other")
-        with ss.known_sft(), self.assertRaises(self.errors.MissingLora) as cm:
-            ss.run(self.tiny, model=model, identity_profile=profile, preset_id="turbo_8step", cfg=1.0)
-        text = str(cm.exception)
+        with ss.known_sft(), ss.NoSample():
+            result = ss.run(self.tiny, model=model, identity_profile=profile, preset_id="turbo_8step", cfg=1.0)
+        note = next(w for w in result.report["warnings"] if w["code"] == "lora_not_recorded")
+        text = note["message"] + " " + note["fix"]
         for needle in (NAME, "'other'", "role=distill"):
             self.assertIn(needle, text)
 

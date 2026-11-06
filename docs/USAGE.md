@@ -9,13 +9,13 @@ Version 0.4.0 on ComfyUI 0.42.0 (commit `8f04fd6ec`).
 - **Nothing here is calibrated.** The GPU parity run measured bit-exact equality with the native graph on 10
   fixed cases (reduced size, `DEVIATIONS.md` B10; `CALIBRATION.md`); that is a statement about equality, not about
   quality. Calibration stages B to D of SPEC 9 have not been done. The numbers of every preset are the recipe of the official OpenMOSS ComfyUI
-  graph or, for the turbo presets, the recipe of the DMD2 card.
+  graph, for the turbo presets the recipe of the DMD2 card and, for the darkroom presets, the maintainers' own darkroom recipe.
 - **Status words.** `stable` = the baseline recipe (`reference`); its parity gate passed at reduced size on 10 cases. `candidate` = a preset
   whose gate has not passed; the four `*_safe` presets are numerically equal to reference, and the turbo presets have
   their own gate, whose quality part (G5) was not run. `experimental` = research. `preview_only` = a draft. A status word is not a measurement of
   quality, and the pack makes no claim of a gain in quality, identity or realism.
-- **Not in v1:** `MossPhotonSeedDrafts`, `MossPhotonPreserveUpscale`, `MossPhotonIdentityDetailer`,
-  `MossPhotonProtectedRefine` (SPEC 4.2); the `guard` socket; phased LoRA weight as a verified feature (it exists as the experimental `phased` profile since 0.2.0, 3.3.1); an identity score; img2img, inpaint
+- **Not in v1:** `MossPhotonSeedDrafts`, `MossPhotonPreserveUpscale`,
+  `MossPhotonProtectedRefine` (SPEC 4.2; `MossPhotonIdentityDetailer` of the same list exists as an experimental node, 3.10); the `guard` socket; phased LoRA weight as a verified feature (it exists as the experimental `phased` profile since 0.2.0, 3.3.1); an identity score; img2img, inpaint
   and upscaling (the one exception is the experimental second pass of the Hires Fix node, 3.9); a Base workflow; a masked-detailer workflow. A source image or latent is refused by `wardrobe_safe` and
   `scene_safe` (`unsupported_source_input`).
 
@@ -435,6 +435,39 @@ It stops only for the impossible: a wrong MODEL, a latent that is not a MOSS lat
 not in the loras folder (ComfyUI's `FileNotFoundError`) or that maps nothing onto MOSS (`incompatible_lora`), and a non-finite
 result (`non_finite_output`).
 
+### 3.10 Moss Photon Identity Detailer (`MossPhotonIdentityDetailer`, 5 Finishing) - experimental
+
+A finishing pass for small faces, for example in a full-body frame. A face whose bbox short side is below `size_gate_px` is cut
+out (1.8x square crop), redrawn at 1024 px with the turbo stack of the connected MODEL (8 steps, `denoise`), colour-matched in LAB
+and pasted back through a feathered ellipse; the pixels outside the ellipse are bit-equal to the input. Larger faces are left
+alone (info `face_large_skipped`). The prompt is the face and the trigger word of the character in `identity_profile`; its text
+is not written to the report (sha256 only). **It takes `identity_profile` from the deprecated LoRA Profile chain (3.3.0)**, whose
+MODEL it must be given, and the chain must contain a distill adapter: the pass is verified on the turbo stack only and a profile
+without one is refused (`unsupported_feature`).
+
+| Input | Default | Meaning |
+|---|---|---|
+| `image`, `model`, `clip`, `vae`, `report`, `identity_profile` | - | The decoded image, the MODEL and `identity_profile` of the same LoRA Profile chain, the MOSS text encoder, the VAE that decoded the image, the report of a MossPhoton sampler (returned with a detailer section). None is modified. |
+| `seed` | 0 | Each face gets a fixed offset from it. |
+| `size_gate_px` | 110 (16 to 4096) | The pass runs only on faces below this short side. At 2 MP (faces about 120 x 165 px) the maintainers' test found it only lowered the ArcFace score. |
+| `denoise` | 0.25 (0.05 to 0.6) | Img2img strength of the redraw. In the maintainers' test 0.2 to 0.3 sharpened small faces and 0.35 and up changed the face. |
+| `reference_images`, `consent_reference_photos` (optional) | none, off | Photos of the character. Read only with consent; never stored or logged. Without consent they are ignored (`reference_photos_ignored`). |
+| `other_reference_images_1`, `_2` (optional) | none | Photos of a second and third person: a face that matches them better is left untouched. |
+| `max_faces` (optional) | 8 (1 to 16) | Largest faces first; smaller ones are not looked at. |
+| `accept_without_references` (optional) | off | Off: with no usable reference photos nothing is redrawn and the image passes through. On: redraw anyway, keep the result when the new crop passes the visibility and pose gates, and mark it unscorable. |
+| `character_match_min` (optional) | 0.30 | With references, a face whose mean ArcFace similarity to the character is below this stays untouched. A binding cut-off, not a measure of identity. |
+
+With references and consent a redraw is kept only if the ArcFace score of the same face rises by at least 0.01 (`face_detailer.py`,
+`min_delta`: below that a gain cannot be told from re-measurement noise); otherwise the original crop stays. Outputs: `image`, `report`
+(the incoming report plus a detailer section: per face the box, the gate, the score before and after, the decision, the time) and a
+text `summary`. It needs `ultralytics` and `face_yolov8m.pt` (`pip install ultralytics` into the ComfyUI Python, the model in
+`models/ultralytics/bbox/`); without them the node refuses to run with `missing_guard_dependency` and the rest of the pack is not
+affected. The reference photos and the accept rule also need `insightface` and `onnxruntime` with the `buffalo_l` pack in
+`models/insightface/models/buffalo_l/`; without them a run with no reference photos marks faces unscorable, and reference photos with
+consent stop the node (`missing_guard_dependency`, `detailer.py`). A face below 48 px on its short side is skipped as too small
+(`min_face_px`, `finishing/face_detailer.py`). It stops for the impossible: no detector, reference photos with consent and no ArcFace
+scorer, a profile that does not match the MODEL or has no distill adapter, reference photos with no usable face, a newer or invalid report.
+
 ## 4. Presets
 
 Details and generated parameter tables: `presets/<id>.md` in this folder. All numbers below come from the preset files.
@@ -563,5 +596,5 @@ samples the finish phase; the entry changes nothing and `lora.plan[].applied_in`
 ## 9. Out of scope in v1 (summary)
 
 Base verification; calibration stages B to D; phased LoRA weight as a verified feature (it exists as the experimental `phased` profile since 0.2.0, 3.3.1); the nodes `MossPhotonSeedDrafts`,
-`MossPhotonPreserveUpscale`, `MossPhotonIdentityDetailer`, `MossPhotonProtectedRefine`; identity and clothing scoring;
+`MossPhotonPreserveUpscale`, `MossPhotonProtectedRefine` (`MossPhotonIdentityDetailer` exists, experimental, 3.10); identity and clothing scoring;
 quantised-checkpoint matrix; the `guard` socket. See `DEVIATIONS.md` for the reasons.

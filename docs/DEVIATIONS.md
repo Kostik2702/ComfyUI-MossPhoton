@@ -85,8 +85,8 @@ darkroom presets (B12), so the sampler's `preset` list has twelve entries and `d
 ### B5. Not in v1 at all
 
 Out of scope by maintainers' decision 2026-10-25 (design DV5, DV9, DV17, DV18 and the ticket scope): calibration stages B to D;
-the second-queue nodes of SPEC 4.2 (`MossPhotonSeedDrafts`, `MossPhotonPreserveUpscale`, `MossPhotonIdentityDetailer`,
-`MossPhotonProtectedRefine`); the masked-detailer example workflow of SPEC 8; Base verification (MP-19); the `guard`
+the second-queue nodes of SPEC 4.2 (`MossPhotonSeedDrafts`, `MossPhotonPreserveUpscale`,
+`MossPhotonProtectedRefine`; `MossPhotonIdentityDetailer` of the same list is registered, experimental, USAGE 3.10: the maintainers reversed that decision for it the same day, the node was built in commit `42fde25`, and these docs kept the old line until now); the masked-detailer example workflow of SPEC 8; Base verification (MP-19); the `guard`
 socket; phased LoRA weight (MP-16). SPEC 8 asks for example workflows for Base and for a masked detailer: neither is
 shipped (Base: not verified in v1; the masked detailer node does not exist). Design 6.8 expected a Base workflow marked
 "not verified"; the MP-13 brief lists five workflows without it.

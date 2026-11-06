@@ -10,7 +10,7 @@ Version 0.4.0. Scope: SFT only. Base: not verified in v1.
 | Tested on | ComfyUI 0.42.0, commit `8f04fd6ec`, web frontend 1.55.18, Python 3.13, torch 2.9 / CUDA 13.0 (embedded Windows build). Nothing else has been tried. The recorded `/object_info` used by the workflow tests is from this build | `tests/quality/object_info_snapshot.json`; docs/01-investigation.md |
 | Python | 3.10 or newer (`requires-python` in `pyproject.toml`, ComfyUI's own floor). The code uses no syntax newer than 3.9 grammar (checked by parsing every file), but it has only been run on 3.13 | `pyproject.toml` |
 | Python packages | **none** beyond ComfyUI's own environment. The `reference` path and every node of v1 use the standard library, torch and numpy that ComfyUI already needs. `pyproject.toml` lists no dependencies | SPEC 8; `pyproject.toml` |
-| Optional packages | **optional**, for face protection in `MossPhotonHiresFix` (`USAGE.md`, 3.9): the Python package `ultralytics` (`pip install ultralytics` into the ComfyUI Python) and the YOLO face model `face_yolov8m.pt` in `models/ultralytics/bbox/`. Without either, the node still runs, without face protection, and says so with the warning `hires_no_detector`. Every other node uses neither. ArcFace and similar extras belong to the second-queue nodes, which are not in this release (see `USAGE.md`, section 9) | SPEC 4.2, 8 |
+| Optional packages | **optional**, for face protection in `MossPhotonHiresFix` (`USAGE.md`, 3.9): the Python package `ultralytics` (`pip install ultralytics` into the ComfyUI Python) and the YOLO face model `face_yolov8m.pt` in `models/ultralytics/bbox/`. Without either, the node still runs, without face protection, and says so with the warning `hires_no_detector`. `MossPhotonIdentityDetailer` (`USAGE.md`, 3.10) also needs `ultralytics` and the face model, and `insightface` with `onnxruntime` for reference photos | SPEC 4.2, 8 |
 | Network | none while generating. The pack loads local files only and runs no remote code | SPEC 8 |
 
 ## 2. Put the pack into ComfyUI
@@ -57,7 +57,7 @@ Quantised weights (int8, fp8) load but are labelled `reference_modified` and are
 
 - The ComfyUI console must not contain `[MossPhoton] module ... disabled`. A line like that means one node module failed
   to import; the other nodes still load. The message carries the cause.
-- Add Node, category **MossPhoton**: four groups `1 Setup`, `2 Sampling`, `3 Diagnostics`, `4 Output`, eight nodes.
+- Add Node, category **MossPhoton**: five groups `1 Setup`, `2 Sampling`, `3 Diagnostics`, `4 Output`, `5 Finishing`, twelve nodes.
 - `GET /mossphoton/presets/reference/resolved` (in a browser, same host and port as ComfyUI) returns the effective
   settings of the preset as JSON.
 - Sampler nodes show an "effective settings" panel and fill `preset_pin` themselves when the web extension is loaded. The

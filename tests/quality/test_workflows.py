@@ -645,13 +645,16 @@ class TestDocs(unittest.TestCase):
 
     def test_relative_links_resolve(self):
         link = re.compile(r"\]\((?!https?:|#|mailto:)([^)#\s]+)")
+        html = re.compile(r"""\b(?:src|srcset)=["'](?!https?:|#|mailto:|data:)([^"'#\s]+)""")
         paths = [os.path.join(PKG, "README.md")] + sorted(glob.glob(os.path.join(DOCS_DIR, "**", "*.md"), recursive=True))
         for path in paths:
             with open(path, "r", encoding="utf-8") as fh:
                 text = fh.read()
-            for target in link.findall(text):
+            for target in link.findall(text) + html.findall(text):
                 with self.subTest(doc=os.path.relpath(path, PKG), target=target):
                     self.assertTrue(os.path.exists(os.path.normpath(os.path.join(os.path.dirname(path), target))))
+        readme_text = self.read("README.md")
+        self.assertGreater(len(html.findall(readme_text)), 0)  # control: the html regex sees the README images (17)
 
     def test_deviations_doc_lists_all_21_rows(self):
         text = self.read("docs", "DEVIATIONS.md")

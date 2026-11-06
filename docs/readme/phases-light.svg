@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" width="900" height="420" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">
+<rect x="0.5" y="0.5" width="899" height="419" rx="8" fill="#f8f9f6" stroke="#d2d7d1"/>
+<text x="20.0" y="28.0" fill="#15181a" font-size="13" font-weight="600" text-anchor="start">turbo_darkroom_portrait@1.0.0: darkroom phases on the sigma axis (dots = model steps)</text>
+<rect x="70.0" y="44.0" width="45.6" height="328.0" fill="#e8ebe6"/>
+<rect x="115.6" y="44.0" width="83.6" height="328.0" fill="#f3e3de"/>
+<rect x="199.2" y="44.0" width="630.8" height="328.0" fill="#e3ebee"/>
+<line x1="70.0" y1="44.0" x2="70.0" y2="372.0" stroke="#e1e5df" stroke-width="1"/>
+<text x="70.0" y="386.0" fill="#6f7578" font-size="11" font-weight="400" text-anchor="middle">1.00</text>
+<line x1="260.0" y1="44.0" x2="260.0" y2="372.0" stroke="#e1e5df" stroke-width="1"/>
+<text x="260.0" y="386.0" fill="#6f7578" font-size="11" font-weight="400" text-anchor="middle">0.75</text>
+<line x1="450.0" y1="44.0" x2="450.0" y2="372.0" stroke="#e1e5df" stroke-width="1"/>
+<text x="450.0" y="386.0" fill="#6f7578" font-size="11" font-weight="400" text-anchor="middle">0.50</text>
+<line x1="640.0" y1="44.0" x2="640.0" y2="372.0" stroke="#e1e5df" stroke-width="1"/>
+<text x="640.0" y="386.0" fill="#6f7578" font-size="11" font-weight="400" text-anchor="middle">0.25</text>
+<line x1="830.0" y1="44.0" x2="830.0" y2="372.0" stroke="#e1e5df" stroke-width="1"/>
+<text x="830.0" y="386.0" fill="#6f7578" font-size="11" font-weight="400" text-anchor="middle">0.00</text>
+<text x="450.0" y="402.0" fill="#6f7578" font-size="11" font-weight="400" text-anchor="middle">sigma (1.00 = pure noise, 0.00 = image); phase edges at r = 0.06, 0.17 of the sigma span</text>
+<text x="74.0" y="60.0" fill="#4b5155" font-size="11" font-weight="400" text-anchor="start">COMPOSE: r 0.00-0.06, sigma 1.00-0.94, 3 steps</text>
+<text x="119.6" y="74.0" fill="#4b5155" font-size="11" font-weight="400" text-anchor="start">COMMIT: r 0.06-0.17, sigma 0.94-0.83, 4 steps</text>
+<text x="203.2" y="88.0" fill="#4b5155" font-size="11" font-weight="400" text-anchor="start">FINISH: r 0.17-1.00, sigma 0.83-0.00, 5 steps</text>
+<text x="826.0" y="60.0" fill="#6f7578" font-size="11" font-weight="400" text-anchor="end">hold: none (r_k = r_f = 0.17)</text>
+<line x1="70.0" y1="122.0" x2="830.0" y2="122.0" stroke="#2a78d6" stroke-width="2"/>
+<text x="20.0" y="110.0" fill="#4b5155" font-size="11" font-weight="600" text-anchor="start">step</text>
+<circle cx="70.0" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="70.0" y="114.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">0</text>
+<circle cx="83.5" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="83.5" y="107.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">1</text>
+<circle cx="99.1" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="99.1" y="114.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">2</text>
+<circle cx="117.5" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="117.5" y="107.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">3</text>
+<circle cx="139.0" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="139.0" y="114.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">4</text>
+<circle cx="164.8" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="164.8" y="107.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">5</text>
+<circle cx="196.7" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="196.7" y="114.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">6</text>
+<circle cx="236.1" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="236.1" y="107.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">7</text>
+<circle cx="286.7" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="286.7" y="114.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">8</text>
+<circle cx="355.0" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="355.0" y="107.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">9</text>
+<circle cx="449.5" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="449.5" y="114.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">10</text>
+<circle cx="591.1" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<text x="591.1" y="107.0" fill="#6f7578" font-size="9" font-weight="400" text-anchor="middle">11</text>
+<circle cx="830.0" cy="122.0" r="3.5" fill="#2a78d6" stroke="#f8f9f6" stroke-width="1.5"/>
+<line x1="70.0" y1="226.0" x2="830.0" y2="226.0" stroke="#b8beb6" stroke-width="1"/>
+<text x="20.0" y="160.0" fill="#4b5155" font-size="11" font-weight="600" text-anchor="start">character weight</text>
+<text x="62.0" y="230.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="end">1.00</text>
+<line x1="70.0" y1="226.0" x2="830.0" y2="226.0" stroke="#e1e5df" stroke-width="1"/>
+<text x="62.0" y="172.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="end">1.35</text>
+<line x1="70.0" y1="168.0" x2="830.0" y2="168.0" stroke="#e1e5df" stroke-width="1"/>
+<path d="M70.0 226.0 L83.5 226.0 L83.5 226.0 L99.1 226.0 L99.1 226.0 L117.5 226.0 L117.5 226.0 L139.0 226.0 L139.0 214.4 L164.8 214.4 L164.8 191.2 L196.7 191.2 L196.7 168.0 L236.1 168.0 L236.1 168.0 L286.7 168.0 L286.7 168.0 L355.0 168.0 L355.0 168.0 L449.5 168.0 L449.5 168.0 L591.1 168.0 L591.1 168.0 L830.0 168.0" fill="none" stroke="#b4533a" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="70.0" cy="226.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="83.5" cy="226.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="99.1" cy="226.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="117.5" cy="226.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="139.0" cy="214.4" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="164.8" cy="191.2" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="196.7" cy="168.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="236.1" cy="168.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="286.7" cy="168.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="355.0" cy="168.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="449.5" cy="168.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<circle cx="591.1" cy="168.0" r="3" fill="#b4533a" stroke="#f8f9f6" stroke-width="1.5"/>
+<line x1="70.0" y1="300.0" x2="830.0" y2="300.0" stroke="#b8beb6" stroke-width="1"/>
+<text x="20.0" y="252.0" fill="#4b5155" font-size="11" font-weight="600" text-anchor="start">cfg</text>
+<text x="62.0" y="304.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="end">1.0</text>
+<line x1="70.0" y1="300.0" x2="830.0" y2="300.0" stroke="#e1e5df" stroke-width="1"/>
+<text x="62.0" y="264.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="end">2.0</text>
+<line x1="70.0" y1="260.0" x2="830.0" y2="260.0" stroke="#e1e5df" stroke-width="1"/>
+<path d="M70.0 300.0 L83.5 300.0 L83.5 300.0 L99.1 300.0 L99.1 300.0 L117.5 300.0 L117.5 300.0 L139.0 300.0 L139.0 300.0 L164.8 300.0 L164.8 300.0 L196.7 300.0 L196.7 300.0 L236.1 300.0 L236.1 260.0 L286.7 260.0 L286.7 260.0 L355.0 260.0 L355.0 260.0 L449.5 260.0 L449.5 260.0 L591.1 260.0 L591.1 260.0 L830.0 260.0" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<line x1="70.0" y1="372.0" x2="830.0" y2="372.0" stroke="#b8beb6" stroke-width="1"/>
+<text x="20.0" y="324.0" fill="#4b5155" font-size="11" font-weight="600" text-anchor="start">forwards per step (12 steps, 17 forwards)</text>
+<rect x="71.0" y="358.0" width="11.5" height="14.0" fill="#2a78d6" opacity="0.85"/>
+<rect x="84.5" y="358.0" width="13.6" height="14.0" fill="#2a78d6" opacity="0.85"/>
+<text x="91.3" y="355.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">1</text>
+<rect x="100.1" y="358.0" width="16.4" height="14.0" fill="#2a78d6" opacity="0.85"/>
+<text x="108.3" y="355.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">1</text>
+<rect x="118.5" y="358.0" width="19.5" height="14.0" fill="#2a78d6" opacity="0.85"/>
+<text x="128.2" y="355.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">1</text>
+<rect x="140.0" y="358.0" width="23.8" height="14.0" fill="#2a78d6" opacity="0.85"/>
+<text x="151.9" y="355.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">1</text>
+<rect x="165.8" y="358.0" width="29.9" height="14.0" fill="#2a78d6" opacity="0.85"/>
+<text x="180.7" y="355.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">1</text>
+<rect x="197.7" y="358.0" width="37.4" height="14.0" fill="#2a78d6" opacity="0.85"/>
+<text x="216.4" y="355.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">1</text>
+<rect x="237.1" y="344.0" width="48.6" height="28.0" fill="#2a78d6" opacity="0.85"/>
+<text x="261.4" y="341.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">2</text>
+<rect x="287.7" y="344.0" width="66.3" height="28.0" fill="#2a78d6" opacity="0.85"/>
+<text x="320.8" y="341.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">2</text>
+<rect x="356.0" y="344.0" width="92.5" height="28.0" fill="#2a78d6" opacity="0.85"/>
+<text x="402.3" y="341.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">2</text>
+<rect x="450.5" y="344.0" width="139.5" height="28.0" fill="#2a78d6" opacity="0.85"/>
+<text x="520.3" y="341.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">2</text>
+<rect x="592.1" y="344.0" width="236.9" height="28.0" fill="#2a78d6" opacity="0.85"/>
+<text x="710.5" y="341.0" fill="#6f7578" font-size="10" font-weight="400" text-anchor="middle">2</text>
+</svg>

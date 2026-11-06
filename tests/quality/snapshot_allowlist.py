@@ -19,6 +19,10 @@ FILE_WIDGET_ALLOWLIST = {
     ("MossPhotonLoRAPhase", "lora_name"): (
         "none", "lodestones-8-steps-dmd2-lora.safetensors", "your_character_lora.safetensors",
         "your_second_lora.safetensors"),
+    # MP-91: the Hires Fix node offers "none" and the loras folder for the character LoRA it boosts.
+    ("MossPhotonHiresFix", "character_lora"): (
+        "none", "lodestones-8-steps-dmd2-lora.safetensors", "your_character_lora.safetensors",
+        "your_second_lora.safetensors"),
     ("LoraLoaderModelOnly", "lora_name"): (
         "lodestones-8-steps-dmd2-lora.safetensors", "your_character_lora.safetensors", "your_second_lora.safetensors"),
 }

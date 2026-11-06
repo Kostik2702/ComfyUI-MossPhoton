@@ -1,6 +1,6 @@
 # Calibration status
 
-Version 0.3.0. Short version: **stage A (parity) is done for SFT within reduced sizes; nothing else is calibrated.** The
+Version 0.4.0. Short version: **stage A (parity) is done for SFT within reduced sizes; nothing else is calibrated.** The
 presets carry the recipe of the vendor's reference graph (or, for turbo, of the LoRA card). No calibration manifest
 exists. The GPU parity, determinism and stability checks were run on 2026-10-25 at sizes smaller than SPEC 10 (maintainers'
 decision, `DEVIATIONS.md` B10); the quality gates of SPEC 10 were not run. Scope: SFT only. Base: not verified in v1.

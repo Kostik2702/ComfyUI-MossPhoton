@@ -2,7 +2,7 @@
 ComfyUI-MossPhoton
 ComfyUI nodes for text-to-image with MOSS-Image (SFT): a sampler that targets parity with the native graph, driven by
 versioned presets (including 8-step DMD2 turbo presets), a LoRA Phase node (per-phase LoRA strength; ordinary LoRA loaders work
-too), a prompt node that never rewrites the user's text, an empty-latent and a schedule node, and diagnostics and save
+too), an experimental hires-fix node (second pass that keeps the face), a prompt node that never rewrites the user's text, an empty-latent and a schedule node, and diagnostics and save
 nodes that record what really ran. Standard library, torch and numpy only; MIT licence.
 """
 import importlib
@@ -20,6 +20,7 @@ _NODE_MODULES = [
     "moss_photon.nodes.detailer",  # second queue (SPEC 4.2, MP-58)
     "moss_photon.nodes.lora_plan",  # MossPhotonLoRAPhase (MP-84)
     "moss_photon.nodes.prompt_split",  # helper: prompt-enhancer answer -> PromptLayout fields
+    "moss_photon.nodes.hires",  # MossPhotonHiresFix (MP-91): upscale + redraw, the face enters late
 ]
 
 

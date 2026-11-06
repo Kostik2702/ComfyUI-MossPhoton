@@ -5,7 +5,7 @@ node that sets in which phase of the run a LoRA acts (ordinary ComfyUI LoRA load
 Profile node is deprecated), a prompt node that never rewrites your text, and diagnostics and a save node that record
 what really ran.
 
-Version 0.3.0, MIT licence. Tested only on ComfyUI 0.42.0 (commit `8f04fd6ec`), frontend 1.55.18, Python 3.13.
+Version 0.4.0, MIT licence. Tested only on ComfyUI 0.42.0 (commit `8f04fd6ec`), frontend 1.55.18, Python 3.13.
 
 **Scope: SFT only. Base: not verified in v1.** Calibration stages B to D are not done. The
 presets carry the vendor's reference recipe; the pack makes no claim about image quality, identity or realism.
@@ -14,7 +14,7 @@ presets carry the vendor's reference recipe; the pack makes no claim about image
 
 | Part | Status |
 |---|---|
-| 8 nodes (Sampler, Sampler Advanced, Schedule, LoRA Profile (deprecated), Prompt & Layout, Empty Latent, Diagnostics, Save Image), plus LoRA Phase and Prompt Split | implemented; unit and CPU integration tests on a tiny random model |
+| 8 nodes (Sampler, Sampler Advanced, Schedule, LoRA Profile (deprecated), Prompt & Layout, Empty Latent, Diagnostics, Save Image), plus LoRA Phase, Prompt Split and Hires Fix (experimental) | implemented; unit and CPU integration tests on a tiny random model |
 | Preset `reference` | `stable` label = the vendor recipe (50 Euler steps, CFG 3, shift 5, SLG layer 22). Measured: bit-exact vs the native graph on 10 fixed cases (ComfyUI 0.42.0 `8f04fd6ec`, RTX 5090, pack `5b33c0e`): equal latents and images, equal sigma and forward counts, F = 0 |
 | Determinism and stability of `reference` | measured: 10 cases x 3 repeats give identical latents; 30 stability jobs (interleaved LoRA stacks and sizes) with no failed job and no allocator growth. The sizes are smaller than SPEC section 10 by the maintainers' decision, see [DEVIATIONS](docs/DEVIATIONS.md), B10; device-level VRAM growth over 30 jobs was 0.00 % (`reference`) and 2.63 % (turbo), limit 5 %; measured after unload with the Windows per-process counter, so it is a residual, not a peak |
 | Presets `photo_safe`, `identity_safe`, `wardrobe_safe`, `scene_safe` | `candidate`; numerically equal to reference, they differ in input contract and report |
@@ -24,7 +24,8 @@ presets carry the vendor's reference recipe; the pack makes no claim about image
 | Presets `turbo_darkroom_portrait`, `turbo_darkroom_fullbody` (darkroom phases: compose, commit, finish) | `candidate`, uncalibrated, experimental (label `not_reference`, reason `darkroom_experimental`). They run in the two samplers (the phase knobs are in the Advanced sampler); no separate darkroom node. Nothing is known about their quality beyond the maintainers' own look at a few images; see [USAGE](docs/USAGE.md), 3.5 |
 | Base checkpoints | recognised by hash, not verified |
 | Calibration stages B to D | not done |
-| Identity / clothing scoring, masked detailer, upscale, seed drafts | not in v1 |
+| Identity / clothing scoring, masked detailer, seed drafts | not in v1 |
+| Upscale | no upscale node and no pixel upscaler in v1. The one exception is the second pass of a hires fix, `MossPhotonHiresFix` (its default upscale is Lanczos in pixels, with a latent-bicubic option): **experimental**, its defaults measured on two seeds and one prompt only; see [USAGE](docs/USAGE.md), 3.9 |
 | Layout JSON, text-encoder LoRA, Advanced sampler | experimental |
 | Phased LoRA weight (`profile = phased`, Advanced sampler only) | experimental, outside every verification; clone per level, label `not_reference`; with a constant weight it is bit-exact to the stock loader in one GPU smoke case; see [USAGE](docs/USAGE.md), 3.3.1 |
 

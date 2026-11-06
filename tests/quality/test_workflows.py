@@ -340,7 +340,7 @@ class TestSnapshot(unittest.TestCase):
         for name in ("MossPhotonSampler", "MossPhotonSamplerAdvanced", "MossPhotonSchedule", "MossPhotonLoRAProfile",
                      "MossPhotonPromptLayout", "MossPhotonEmptyLatent", "MossPhotonDiagnostics",
                      "MossPhotonSaveImage", "MossPhotonIdentityDetailer", "MossPhotonLoRAPhase", "MossPhotonPromptSplit",
-                     "LoraLoaderModelOnly", "UNETLoader", "CLIPLoader", "VAELoader", "VAEDecode"):
+                     "MossPhotonHiresFix", "LoraLoaderModelOnly", "UNETLoader", "CLIPLoader", "VAELoader", "VAEDecode"):
             self.assertIn(name, self.snap["nodes"])
 
     def test_snapshot_holds_no_file_name_outside_the_allowlist(self):
@@ -350,7 +350,8 @@ class TestSnapshot(unittest.TestCase):
     def test_every_allowlisted_file_widget_is_in_the_snapshot_with_exactly_the_allowlist(self):
         for (node, widget), allowed in snapshot_allowlist.FILE_WIDGET_ALLOWLIST.items():
             with self.subTest(node=node, widget=widget):
-                spec = self.snap["nodes"][node]["input"]["required"][widget]
+                sections = self.snap["nodes"][node]["input"]    # MP-91: a widget can be optional (Hires Fix character_lora)
+                spec = sections["required"][widget] if widget in sections["required"] else sections["optional"][widget]
                 self.assertEqual(list(snapshot_allowlist.combo_values(spec)), list(allowed))
 
     def test_the_leak_check_goes_red_on_a_planted_private_name(self):
@@ -385,15 +386,15 @@ class TestSnapshot(unittest.TestCase):
         pkg_init = importlib.import_module("moss_photon.nodes")
         classes, names = {}, {}
         for modname in ("sampler", "schedule", "lora", "prompt", "latent", "diagnostics", "save", "detailer", "lora_plan",
-                        "prompt_split"):
+                        "prompt_split", "hires"):
             mod = importlib.import_module("moss_photon.nodes." + modname)
             classes.update(mod.NODE_CLASS_MAPPINGS)
             names.update(mod.NODE_DISPLAY_NAME_MAPPINGS)
         del pkg_init
         self.assertEqual(sorted(classes), sorted(n for n in self.snap["nodes"] if n.startswith("MossPhoton")))
-        # the eight of SPEC 4.1, the second-queue detailer (MP-58) and the two helpers of consts.NODE_IDS_HELPERS (MP-84:
-        # LoRA Phase, Prompt Split); the darkroom is in the samplers (MP-71)
-        self.assertEqual(len(classes), 11)
+        # the eight of SPEC 4.1, the second-queue detailer (MP-58) and the three helpers of consts.NODE_IDS_HELPERS (MP-84:
+        # LoRA Phase, Prompt Split; MP-91: Hires Fix); the darkroom is in the samplers (MP-71)
+        self.assertEqual(len(classes), 12)
         self.assertEqual(sorted(classes), sorted(consts.NODE_IDS + consts.NODE_IDS_SECOND_QUEUE + consts.NODE_IDS_HELPERS))
         for name, cls in sorted(classes.items()):
             with self.subTest(node=name):

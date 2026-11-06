@@ -1,6 +1,6 @@
 """MP-84: a seeded widget fuzz over MossPhotonSampler, MossPhotonSamplerAdvanced, MossPhotonLoRAPhase, the deprecated
-MossPhotonLoRAProfile and MossPhotonPromptSplit on the tiny MOSS (CPU). (MossPhotonIdentityDetailer is not fuzzed: it needs a
-face detector and stays a refusal node, see the whitelist.)
+MossPhotonLoRAProfile and MossPhotonPromptSplit on the tiny MOSS (CPU), and (MP-91) over MossPhotonHiresFix with a fake face
+detector. (MossPhotonIdentityDetailer is not fuzzed: it needs a face detector and stays a refusal node, see the whitelist.)
 
 Owner's rule (2026-11-02): every settings conflict degrades with a warning; a node raises only for what is impossible. The static
 half is ``tests/unit/test_raise_whitelist.py`` (every raise site of the source is on a short list). This is the dynamic half: the
@@ -22,6 +22,7 @@ from tests.unit import test_raise_whitelist as guard
 
 from . import lora_synth, test_darkroom_cpu as dk_tests
 from . import sampler_support as ss
+from .test_hires_cpu import FACE_PX, HiresBase, pin
 
 SEED = 84
 CASES = 110
@@ -276,6 +277,110 @@ class PromptSplitFuzzTest(unittest.TestCase):
         control = node.split("<<<POSITIVE>>>\nSECRETWORD a woman<<<END>>>")["result"]
         self.assertEqual(control[0], "SECRETWORD a woman", "control: a field is passed through unchanged")
         self.assertNotIn("SECRETWORD", control[len(FIELDS)])
+
+
+class HiresWidgetFuzzTest(HiresBase):
+    """MossPhotonHiresFix (MP-91) with a fake detector: the widgets are drawn over their whole range and the edge values (the
+    bounds, the sentinels, a face_sigma on either side of the schedule, every sampler family that changes the schedule), on a plain
+    MODEL, a MODEL with an ordinary loader and a MODEL with a LoRA Phase plan of any phase; the detector is present, missing,
+    failing, empty or finds two faces. A case ends in exactly one of two ways: a finite latent of the expected size and a summary, or
+    a raise that is legitimate for THAT case: ComfyUI's ``FileNotFoundError`` for a character LoRA that is not there and
+    ``incompatible_lora`` for one that maps nothing (both only when a boost is asked, the file is not read otherwise), or the
+    ``non_finite_output`` guard. Any other exception, and any other code, is a failure with the case's widgets in the message."""
+
+    CASES = 36
+    SAMPLERS = ("res_multistep", "res_multistep", "euler", "dpmpp_2m", "dpm_2", "heun", "uni_pc", "ddim")
+    SCHEDULERS = ("linear_quadratic", "linear_quadratic", "simple", "sgm_uniform", "karras", "exponential", "beta", "normal",
+                  "kl_optimal", "ddim_uniform")
+    SCALES = (1.0, 1.05, 1.5, 1.5, 1.95, 2.0)
+    STEP_VALUES = (1, 2, 3, 6, 6, 9)
+    DENOISE = (0.05, 0.2, 0.32, 0.32, 0.5, 0.99, 1.0)
+    CFGS = (0.0, 1.0, 1.0, 1.5, 3.0, 30.0)
+    FACE_SIGMAS = (0.0, 0.01, 0.2, 0.5, 0.5, 0.86, 0.9, 1.0)
+    BOOSTS = (0.0, 0.0, 0.05, 0.2, 0.2, 1.0, 2.0)
+    LORAS = ("none", "none", "none", "A.safetensors", "D.safetensors", "missing.safetensors", "bogus.safetensors")
+    DETECTORS = ("ok", "ok", "ok", "ok", "missing", "fails", "empty", "two")
+    METHODS = ("latent_bicubic", "latent_bicubic", "pixel_lanczos")
+    SECOND_FACE = (16.0, 16.0, 64.0, 80.0, 0.8)
+    DEGRADATIONS = ("hires_no_detector", "hires_detector_failed", "hires_no_face", "hires_face_sigma_above_schedule",
+                    "hires_face_sigma_below_schedule", "hires_boost_no_target", "hires_lora_phase_skipped",
+                    "hires_boost_already_in_plan", "hires_bicubic_not_held")
+
+    def build_model(self, rng, notes):
+        model = self.patcher
+        if rng.random() < 0.3:
+            model = ss.apply_lora(model, self.a_sd, pick(rng, (0.3, 1.0)))
+            notes.append("stock")
+        for _ in range(pick(rng, (0, 0, 1, 2, 3))):
+            name, strength, phase = pick(rng, ("A.safetensors", "D.safetensors")), pick(rng, LORA_STRENGTHS), pick(rng, PHASES)
+            model = self.phase_node.apply(model, name, strength, phase)[0]
+            notes.append("phase:%s:%g:%s" % (name, strength, phase))
+        return pin(model)
+
+    PINNED = (0, 1)
+
+    def pinned_case(self, number, model, detector, widgets, boxes, notes):
+        """Case 0: a detector that finds nothing, protection on, a face_sigma inside the schedule. Case 1: a plan entry with phase
+        identity and the same file as character_lora."""
+        if number == 0:
+            return model, "empty", dict(widgets, face_protect=True, face_sigma=0.5, upscale_method="latent_bicubic"), []
+        notes[:] = ["phase:A.safetensors:0.8:identity"]
+        model = pin(self.phase_node.apply(self.patcher, "A.safetensors", 0.8, "identity")[0])
+        return model, "ok", dict(widgets, character_lora="A.safetensors", identity_boost=0.2, face_protect=False), [FACE_PX]
+
+    def test_seeded_widget_fuzz_degrades_or_raises_only_the_impossible(self):
+        from moss_photon.core import errors
+        from tests.unit import test_raise_whitelist as guard
+        import comfy.model_management as mm
+        self.env.write("bogus.safetensors", lora_synth.add_bogus_modules({}, 6))
+        rng = random.Random(SEED + 3)
+        ran = refused = 0
+        seen = set()
+        for number in range(self.CASES):
+            notes = []
+            model = self.build_model(rng, notes)
+            detector = pick(rng, self.DETECTORS)
+            widgets = dict(
+                scale=pick(rng, self.SCALES), steps=pick(rng, self.STEP_VALUES), denoise=pick(rng, self.DENOISE),
+                cfg=pick(rng, self.CFGS), sampler_name=pick(rng, self.SAMPLERS), scheduler=pick(rng, self.SCHEDULERS),
+                face_protect=rng.random() < 0.8, face_sigma=pick(rng, self.FACE_SIGMAS), identity_boost=pick(rng, self.BOOSTS),
+                character_lora=pick(rng, self.LORAS), upscale_method=pick(rng, self.METHODS), seed=rng.randrange(0, 2 ** 32))
+            boxes = {"fails": RuntimeError("planted detector failure"), "empty": [], "two": [FACE_PX, self.SECOND_FACE]}.get(
+                detector, [FACE_PX])
+            if number in self.PINNED:     # the cases that reach the rarer degradations on every run, whatever the pools hold
+                model, detector, widgets, boxes = self.pinned_case(number, model, detector, widgets, boxes, notes)
+            label = "hires fuzz seed %d case %d: %r" % (SEED + 3, number, dict(widgets, model=notes, detector=detector))
+            wants_file = widgets["character_lora"] != "none" and widgets["identity_boost"] > 0.0
+            self.clones.clear()
+            try:
+                result, _vae = self.run_node(model=model, boxes=boxes, detector="missing" if detector == "missing" else "ok",
+                                             **widgets)
+            except mm.InterruptProcessingException:
+                self.fail("an interrupt nobody asked for: " + label)
+            except FileNotFoundError:
+                refused += 1
+                self.assertTrue(wants_file and widgets["character_lora"] == "missing.safetensors", label)
+                continue
+            except errors.MossPhotonError as exc:
+                refused += 1
+                self.assertIn(exc.code, guard.ALLOWED_CODES, "a code outside the no-raise whitelist: %s\n%s" % (exc, label))
+                legit = (exc.code == "incompatible_lora" and wants_file and widgets["character_lora"] == "bogus.safetensors"
+                         ) or exc.code == "non_finite_output"
+                self.assertTrue(legit, "%s raised for a settings conflict instead of degrading: %s\n%s" % (exc.code, exc, label))
+                continue
+            except Exception as exc:  # noqa: BLE001 - the point of the fuzz: any other exception type is a defect
+                self.fail("%s: %s\n%s" % (type(exc).__name__, exc, label))
+            ran += 1
+            out = self.samples(result)
+            want_hw = round(16 * widgets["scale"])
+            self.assertEqual(tuple(out.shape), (1, 128, want_hw, want_hw), label)
+            self.assertTrue(bool(self.torch.isfinite(out).all()), label)
+            text = self.summary(result)
+            self.assertTrue(text.startswith("MossPhoton HiresFix"), label)
+            seen |= {code for code in self.DEGRADATIONS if "[%s]" % code in text}
+        self.assertGreater(ran, self.CASES * 0.7, "the fuzz must mostly run: %d ran, %d refused" % (ran, refused))
+        missed = [code for code in self.DEGRADATIONS if code not in seen]
+        self.assertEqual(missed, [], "the fuzz never reached these degradations (change SEED/CASES or the pools): %s" % missed)
 
 
 class FuzzControlTest(FuzzBase):

@@ -22,6 +22,7 @@ EXPECTED_MODULES = [
     "moss_photon.nodes.schedule", "moss_photon.nodes.sampler",
     "moss_photon.nodes.diagnostics", "moss_photon.nodes.save",
     "moss_photon.nodes.detailer", "moss_photon.nodes.lora_plan", "moss_photon.nodes.prompt_split",
+    "moss_photon.nodes.hires",
 ]
 MY_MODULES = {"moss_photon.nodes.latent": {"MossPhotonEmptyLatent"}, "moss_photon.nodes.schedule": {"MossPhotonSchedule"}}
 

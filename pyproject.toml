@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-mossphoton"
 description = "ComfyUI nodes for MOSS-Image: parity-targeted sampler with versioned presets, per-phase LoRA strength (LoRA Phase), diagnostics and save."
-version = "0.3.0"
+version = "0.4.0"
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"

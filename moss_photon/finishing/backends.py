@@ -40,6 +40,21 @@ def _arcface(root):
     return app
 
 
+def detect_faces(img, detector_path, conf):
+    """``[(x0, y0, x1, y1, conf)]`` in pixels: every face the YOLO model at ``detector_path`` finds in ``img`` (float 0..1
+    ``[H, W, C]``) with a confidence of at least ``conf``. The one place that calls the detector (the detailer and the hires fix)."""
+    bgr = to_u8(img)[..., ::-1].copy()
+    results = _yolo(detector_path).predict(bgr, conf=float(conf), verbose=False)
+    out = []
+    for r in results:
+        if r.boxes is None:
+            continue
+        xyxy = r.boxes.xyxy.detach().float().cpu().numpy()
+        scores = r.boxes.conf.detach().float().cpu().numpy()
+        out.extend((float(b[0]), float(b[1]), float(b[2]), float(b[3]), float(c)) for b, c in zip(xyxy, scores))
+    return out
+
+
 def _resize(pixels, size):
     """``[B, H, W, C]`` torch -> ``[B, size, size, C]`` with ComfyUI's Lanczos (the MP-56 resampler)."""
     import comfy.utils
@@ -84,16 +99,7 @@ class ComfyBackend:
         return self.availability.arcface_ok
 
     def detect(self, img):
-        bgr = to_u8(img)[..., ::-1].copy()
-        results = _yolo(self.availability.detector_path).predict(bgr, conf=float(self.settings.det_conf), verbose=False)
-        out = []
-        for r in results:
-            if r.boxes is None:
-                continue
-            xyxy = r.boxes.xyxy.detach().float().cpu().numpy()
-            conf = r.boxes.conf.detach().float().cpu().numpy()
-            out.extend((float(b[0]), float(b[1]), float(b[2]), float(b[3]), float(c)) for b, c in zip(xyxy, conf))
-        return out
+        return detect_faces(img, self.availability.detector_path, float(self.settings.det_conf))
 
     def read_faces(self, rgb_u8):
         """Every face ArcFace finds in an ``[S, S, 3]`` uint8 RGB crop, as ``FaceReading`` (box, landmarks, embedding)."""

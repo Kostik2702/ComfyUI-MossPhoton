@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0 — 2026-11-06
+
+### Added
+
+- **`MossPhotonHiresFix`** (5 Finishing, experimental; USAGE 3.9): the second pass of a hires fix in one node, in place of
+  `LatentUpscaleBy` + `KSampler`. Inputs: the `model`, `positive`, `negative`, `vae` and `latent` of the first pass, `seed`, `scale`
+  (1.0 to 2.0, default 1.5), `steps`, `denoise`, `cfg`, `sampler_name`, `scheduler` (defaults 6, 0.32, 1.0, `res_multistep`,
+  `linear_quadratic`: the recipe of the stock graph), `face_protect`, `face_sigma`, `identity_boost` and, optional, `character_lora`
+  and `upscale_method` (`pixel_lanczos`, the default, or `latent_bicubic`). Outputs: `latent` and a text `summary` (no report). With
+  `latent_bicubic`, `face_protect` off and `identity_boost` 0 it is that pair of nodes, bit for bit. The bicubic latent upscale
+  leaves a semi-transparent doubled image on brows and eyes (visible in a plain decode; the stock graph hides it by redrawing from a
+  high sigma), which a held face would keep: so the default upscale is `pixel_lanczos` (decode, Lanczos in pixels, encode), and a
+  face is never held on a bicubic latent: with `latent_bicubic` and a face found the run uses `pixel_lanczos` and warns
+  (`hires_bicubic_not_held`); with no face or protection off `latent_bicubic` stays the stock recipe. The first line of the summary
+  names the method that ran. `face_sigma` defaults to 0.35 (on two seeds and one prompt, the lowest value tried kept the face closest
+  to the first pass, with slightly less new detail); the summary line for a boosted `character_lora` says "on top of the loader's strength". With `face_protect` on, the faces found by the YOLO detector are
+  held at the source until the schedule reaches `face_sigma` (a `noise_mask` and a `denoise_mask_function` on a clone of the MODEL;
+  the pixels outside the faces are not touched). `identity_boost` is added to the strength of the character LoRA for this pass: the
+  LoRA Phase entries with phase `identity` (the pass counts as the finish phase: `composition` and `composition+identity` entries do not
+  act, `texture` and `all` do), and the file in `character_lora` for a MODEL patched by ordinary loaders; a known distill LoRA is
+  never boosted, and a character LoRA that is also a boosted plan entry is boosted once. `face_sigma` and `identity_boost` are not
+  calibrated (`identity_boost` is unmeasured on the pixel path). Every setting that cannot be honoured is a warning in the summary (`hires_no_detector`,
+  `hires_detector_failed`, `hires_no_face`, `hires_face_sigma_above_schedule`, `hires_face_sigma_below_schedule`,
+  `hires_boost_no_target`, `hires_boost_distill_skipped`, `hires_mask_not_combined`, `hires_bicubic_not_held`; the infos are `hires_boost_already_in_plan`
+  and `hires_lora_phase_skipped`); the node stops only for a wrong MODEL or latent, a missing or unmappable LoRA file and a non-finite
+  result. A result above 2 MP is noted, above 4 MP warned (`megapixels_out_of_documented_range`).
+- `consts.NODE_IDS_HELPERS` lists the node (`NODE_IDS` stays the eight of the first queue); `finishing/backends.py` exposes the
+  detector as the function `detect_faces`, which the detailer's backend now calls.
+
 ## 0.3.0 — 2026-11-04
 
 Changes relative to 0.2.0. Scope unchanged: SFT only, Base not verified, presets are candidate or experimental (only `reference`

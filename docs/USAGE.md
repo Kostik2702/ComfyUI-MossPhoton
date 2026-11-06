@@ -1,6 +1,6 @@
 # Usage
 
-Version 0.3.0 on ComfyUI 0.42.0 (commit `8f04fd6ec`).
+Version 0.4.0 on ComfyUI 0.42.0 (commit `8f04fd6ec`).
 
 ## 0. Read this first
 
@@ -16,7 +16,7 @@ Version 0.3.0 on ComfyUI 0.42.0 (commit `8f04fd6ec`).
   quality, and the pack makes no claim of a gain in quality, identity or realism.
 - **Not in v1:** `MossPhotonSeedDrafts`, `MossPhotonPreserveUpscale`, `MossPhotonIdentityDetailer`,
   `MossPhotonProtectedRefine` (SPEC 4.2); the `guard` socket; phased LoRA weight as a verified feature (it exists as the experimental `phased` profile since 0.2.0, 3.3.1); an identity score; img2img, inpaint
-  and upscaling; a Base workflow; a masked-detailer workflow. A source image or latent is refused by `wardrobe_safe` and
+  and upscaling (the one exception is the experimental second pass of the Hires Fix node, 3.9); a Base workflow; a masked-detailer workflow. A source image or latent is refused by `wardrobe_safe` and
   `scene_safe` (`unsupported_source_input`).
 
 ## 1. The nodes at a glance
@@ -32,6 +32,18 @@ VAELoader ------------------------------------------vae----------------+        
 
 Both LoRA stages are optional and chain by their MODEL sockets (section 3.3). `MossPhotonSchedule` feeds the Advanced
 sampler's `sigmas` input only.
+
+A second pass, if you want one, goes between the sampler and the decode and takes the place of `LatentUpscaleBy` + `KSampler`
+(section 3.9, experimental):
+
+```text
+MossPhotonSampler --latent--> MossPhotonHiresFix --latent--> VAEDecode --> (Diagnostics / Save as above)
+        model, positive, negative and vae of the first pass go to the Hires Fix as well
+```
+
+| Node | Category | Section | In one line |
+|---|---|---|---|
+| `MossPhotonHiresFix` | 5 Finishing | 3.9 | upscale the latent and redraw it; the faces enter the redraw late, the character LoRA can be boosted for this pass |
 
 **Settings never stop a run (since 0.3.0).** A conflict between settings degrades to the nearest value the engine can run
 and a warning in the report (`setting_adjusted`, `override_outside_bounds`, `forward_budget_exceeded`,
@@ -349,6 +361,79 @@ file (exclusive create, the counter advances). PNG pixels equal the stock SaveIm
 PNG text chunk `moss_photon`; a JSON sidecar `<name>.json` carries the run facts (preset id and version, effective
 sampling, fingerprints, `recipe_hash`) with the report redacted. JPEG and WebP get the sidecar only. Prompts are not
 written unless `embed_workflow` is on.
+
+### 3.9 Moss Photon Hires Fix (`MossPhotonHiresFix`, 5 Finishing) - experimental
+
+The second pass of a hires fix in one node: it upscales the latent of the first pass and redraws it with a short run at a low
+denoise. **Put it between the sampler and `VAEDecode`, instead of `LatentUpscaleBy` + `KSampler`.** Connect the same `model`,
+`positive`, `negative` and `vae` as the first pass used, and the sampler's `latent`. Outputs: `latent` (to `VAEDecode`) and a text
+`summary`. There is no report socket.
+
+**Why the default upscale is `pixel_lanczos`.** The bicubic latent upscale of `LatentUpscaleBy` damages the frame: decode its
+result without any sampling and brows and eyes show a semi-transparent second copy of themselves (a doubled image). The stock graph
+hides this because it redraws everything from a high sigma. A face that is HELD at the source would keep it. So the default
+upscale decodes the latent, enlarges the picture in pixels with Lanczos and encodes it again, and the face is held on that.
+`latent_bicubic` stays as an option because it is the stock recipe: with `upscale_method` `latent_bicubic`, `face_protect` off and
+`identity_boost` 0 the node is exactly the pair `LatentUpscaleBy` + `KSampler`: the same bicubic latent upscale, the same noise,
+the same sampling call, and the same latent comes out, bit for bit (a tiny-model test pins it at scale 1.5 and 1.0). With
+`latent_bicubic` and `face_protect` on, a face that is found is never held on the bicubic latent: the run uses `pixel_lanczos`
+and says so (`hires_bicubic_not_held`); if no face is found, or the protection is off, `latent_bicubic` runs as the stock recipe.
+The other defaults are the recipe of the stock graph this node replaces: scale 1.5, 6 steps, cfg 1, `res_multistep`, `linear_quadratic`, denoise 0.32.
+On `linear_quadratic`, **`denoise` is not the fraction of noise**: 0.32 starts the redraw near sigma 0.86 and runs the sigmas
+0.861, 0.776, 0.668, 0.536, 0.381, 0.202 (the summary prints the first and the last one that ran).
+
+What it adds, both optional and neither calibrated (`face_sigma` was compared on two seeds and one prompt, `identity_boost` is a
+first guess that has not been measured on the pixel path; the pack claims no gain from them):
+
+- **The face enters the redraw late.** A redraw of the whole frame redraws the face too, and its features can drift away from the
+  first pass. With `face_protect` on, the faces are found on the decoded input by a YOLO face detector (`pip install ultralytics`
+  into the ComfyUI Python and put `face_yolov8m.pt` into `models/ultralytics/bbox/`; the node says so when they are missing),
+  and each face is held at the source, re-noised to the sigma of the step,
+  while the schedule is above `face_sigma`; from `face_sigma` down it is redrawn with the rest. Its structure then comes from the
+  first pass and only the fine detail is drawn. The held zone is the ellipse inscribed in the face box, grown by 1.3; the inner
+  65 % of it is held, the rest is a smooth ramp outward. **The pixels outside the faces are not touched by this at all.** With the
+  defaults (`face_sigma` 0.35) a face is held through the first four sigmas, handed over around the fifth (0.381) and free at the
+  last (0.202). On two seeds and one prompt, 0.35 kept the face closer to the first pass than 0.5, with slightly less new detail;
+  a lower value keeps it closer still.
+- **The character LoRA can be boosted for this pass only.** `identity_boost` is added to its strength. The second pass counts as the
+  finish phase of section 3.3: LoRA Phase entries with the phase `identity`, `texture` or `all` act, entries with `composition` or
+  `composition+identity` do not (the summary and the info `hires_lora_phase_skipped` name them), and only `identity` entries with a
+  positive strength take the boost. A known distill LoRA is never boosted. A MODEL patched by ordinary loaders carries no plan, so
+  the node cannot know which of its LoRAs is the character: pick the file in `character_lora` and it is added as an extra patch of
+  strength `identity_boost`. If that file is also a boosted LoRA Phase entry, it is boosted once (info `hires_boost_already_in_plan`).
+  `character_lora` is read only when `identity_boost` is above 0.
+
+| Widget | Start with | Meaning |
+|---|---|---|
+| `model`, `positive`, `negative`, `vae`, `latent` | those of the first pass | The MODEL is cloned, never changed. The VAE is used only when the pixels are needed (the faces, `pixel_lanczos`). |
+| `seed` | any | As in `KSampler`; `control after generate` as there. |
+| `scale` | 1.5 (1.0 to 2.0) | Upscale of the latent, rounded as `LatentUpscaleBy` rounds. 1.0 redraws without upscaling. |
+| `steps`, `denoise`, `cfg`, `sampler_name`, `scheduler` | 6, 0.32, 1.0, `res_multistep`, `linear_quadratic` | As in `KSampler`; the recipe above. Not calibrated. |
+| `face_protect` | on | Hold the faces at the source until `face_sigma`. Off with `latent_bicubic` = the stock pair of nodes. |
+| `face_sigma` | 0.35 (0.0 to 1.0) | The sigma at which a face enters the redraw. Higher = earlier (less protection). At or above the first sigma of the run nothing is protected (the node says so and builds nothing); at or below the last one the face is never released and stays as in the source. Measured on 2 seeds and one prompt, not calibrated. |
+| `identity_boost` | 0.2 (0.0 to 2.0) | Added to the character LoRA's strength for this pass. 0 = off. A first guess; not measured yet on the pixel path. |
+| `character_lora` (optional) | none | The character LoRA of a MODEL patched by ordinary loaders. |
+| `upscale_method` (optional) | `pixel_lanczos` | `pixel_lanczos` decodes, upscales in pixels with Lanczos and encodes again (slower; the faces are searched in the same decode); it avoids the doubled image of the bicubic latent upscale. `latent_bicubic` is the stock recipe; with a face to hold it is replaced by `pixel_lanczos`. The first line of the `summary` names the method that ran. |
+
+The size of the result is checked against what MOSS is documented for: an info above 2 MP (the recommended maximum) and a warning
+above 4 MP (the end of the documented extrapolation) in the `summary`.
+
+**Nothing here stops the run.** Each of these is a warning in the `summary` and a run without the part that could not be built:
+
+| Code | Meaning |
+|---|---|
+| `hires_no_detector` | `ultralytics` or the face model is missing, or the detector failed to load (`hires_detector_failed`): the pass runs without face protection. |
+| `hires_no_face` | no face was found in any image: the pass runs without face protection (an image of a batch without a face is left alone). |
+| `hires_face_sigma_above_schedule` | `face_sigma` is at or above the first sigma: the protection would do nothing and is not built. |
+| `hires_face_sigma_below_schedule` | `face_sigma` is at or below the last sigma: the run goes on and the face stays as in the source. |
+| `hires_boost_no_target` | `identity_boost` is above 0 and no `identity` plan entry acts and no usable `character_lora` is set. |
+| `hires_boost_distill_skipped` | `character_lora` is a known distill LoRA, which is never boosted. |
+| `hires_bicubic_not_held` | `latent_bicubic` with a face to hold: the run used `pixel_lanczos`, because a face held on a bicubic latent keeps its doubled image. `face_protect` off gives the stock recipe. |
+| `hires_mask_not_combined` | the latent already carries a `noise_mask`, or the MODEL a mask function: the face mask would replace it, so the pass runs without face protection. |
+
+It stops only for the impossible: a wrong MODEL, a latent that is not a MOSS latent, a `character_lora` or a LoRA Phase file that is
+not in the loras folder (ComfyUI's `FileNotFoundError`) or that maps nothing onto MOSS (`incompatible_lora`), and a non-finite
+result (`non_finite_output`).
 
 ## 4. Presets
 

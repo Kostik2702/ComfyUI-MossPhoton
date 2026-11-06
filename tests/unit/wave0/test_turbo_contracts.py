@@ -88,6 +88,18 @@ NEW_CODES = {
     "lora_plan_after_patches": "info",
     # MP-84 re-review: a plan entry that acts in no phase its MODEL runs (a main texture entry next to a switched finish model).
     "lora_plan_entry_inactive": "warning",
+    # MP-91: MossPhotonHiresFix. Every one is a degradation, none stops the node (a settings conflict is a warning).
+    "hires_no_detector": "warning",
+    "hires_detector_failed": "warning",
+    "hires_no_face": "warning",
+    "hires_face_sigma_above_schedule": "warning",
+    "hires_face_sigma_below_schedule": "warning",
+    "hires_boost_no_target": "warning",
+    "hires_boost_distill_skipped": "warning",
+    "hires_boost_already_in_plan": "info",
+    "hires_lora_phase_skipped": "info",
+    "hires_mask_not_combined": "warning",
+    "hires_bicubic_not_held": "warning",   # MP-93
 }
 
 DMD2_SHA = "7683fe1fb51f73f5d690f24dd6b7f46f31ab9a9873729a854ac5c9a420ffe6f2"

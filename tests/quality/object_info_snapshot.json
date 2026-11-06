@@ -221,6 +221,226 @@
    ],
    "output_node": false
   },
+  "MossPhotonHiresFix": {
+   "category": "MossPhoton/5 Finishing",
+   "display_name": "Moss Photon Hires Fix",
+   "input": {
+    "optional": {
+     "character_lora": [
+      [
+       "none",
+       "lodestones-8-steps-dmd2-lora.safetensors",
+       "your_character_lora.safetensors",
+       "your_second_lora.safetensors"
+      ],
+      {
+       "default": "none"
+      }
+     ],
+     "upscale_method": [
+      [
+       "latent_bicubic",
+       "pixel_lanczos"
+      ],
+      {
+       "default": "pixel_lanczos"
+      }
+     ]
+    },
+    "required": {
+     "cfg": [
+      "FLOAT",
+      {
+       "default": 1.0,
+       "max": 30.0,
+       "min": 0.0,
+       "round": 0.01,
+       "step": 0.1
+      }
+     ],
+     "denoise": [
+      "FLOAT",
+      {
+       "default": 0.32,
+       "max": 1.0,
+       "min": 0.05,
+       "round": 0.001,
+       "step": 0.01
+      }
+     ],
+     "face_protect": [
+      "BOOLEAN",
+      {
+       "default": true
+      }
+     ],
+     "face_sigma": [
+      "FLOAT",
+      {
+       "default": 0.35,
+       "max": 1.0,
+       "min": 0.0,
+       "step": 0.01
+      }
+     ],
+     "identity_boost": [
+      "FLOAT",
+      {
+       "default": 0.2,
+       "max": 2.0,
+       "min": 0.0,
+       "step": 0.05
+      }
+     ],
+     "latent": [
+      "LATENT",
+      {}
+     ],
+     "model": [
+      "MODEL",
+      {}
+     ],
+     "negative": [
+      "CONDITIONING",
+      {}
+     ],
+     "positive": [
+      "CONDITIONING",
+      {}
+     ],
+     "sampler_name": [
+      [
+       "euler",
+       "euler_cfg_pp",
+       "euler_ancestral",
+       "euler_ancestral_cfg_pp",
+       "heun",
+       "heunpp2",
+       "exp_heun_2_x0",
+       "exp_heun_2_x0_sde",
+       "dpm_2",
+       "dpm_2_ancestral",
+       "lms",
+       "dpm_fast",
+       "dpm_adaptive",
+       "dpmpp_2s_ancestral",
+       "dpmpp_2s_ancestral_cfg_pp",
+       "dpmpp_sde",
+       "dpmpp_sde_gpu",
+       "dpmpp_2m",
+       "dpmpp_2m_cfg_pp",
+       "dpmpp_2m_sde",
+       "dpmpp_2m_sde_gpu",
+       "dpmpp_2m_sde_heun",
+       "dpmpp_2m_sde_heun_gpu",
+       "dpmpp_3m_sde",
+       "dpmpp_3m_sde_gpu",
+       "ddpm",
+       "lcm",
+       "ipndm",
+       "ipndm_v",
+       "deis",
+       "cfgpp_ud10_ab",
+       "res_multistep",
+       "res_multistep_cfg_pp",
+       "res_multistep_ancestral",
+       "res_multistep_ancestral_cfg_pp",
+       "gradient_estimation",
+       "gradient_estimation_cfg_pp",
+       "er_sde",
+       "seeds_2",
+       "seeds_3",
+       "sa_solver",
+       "sa_solver_pece",
+       "ddim",
+       "uni_pc",
+       "uni_pc_bh2"
+      ],
+      {
+       "default": "res_multistep"
+      }
+     ],
+     "scale": [
+      "FLOAT",
+      {
+       "default": 1.5,
+       "max": 2.0,
+       "min": 1.0,
+       "step": 0.05
+      }
+     ],
+     "scheduler": [
+      [
+       "simple",
+       "sgm_uniform",
+       "karras",
+       "exponential",
+       "ddim_uniform",
+       "beta",
+       "normal",
+       "linear_quadratic",
+       "kl_optimal"
+      ],
+      {
+       "default": "linear_quadratic"
+      }
+     ],
+     "seed": [
+      "INT",
+      {
+       "control_after_generate": true,
+       "default": 0,
+       "max": 18446744073709551615,
+       "min": 0
+      }
+     ],
+     "steps": [
+      "INT",
+      {
+       "default": 6,
+       "max": 50,
+       "min": 1
+      }
+     ],
+     "vae": [
+      "VAE",
+      {}
+     ]
+    }
+   },
+   "input_order": {
+    "optional": [
+     "character_lora",
+     "upscale_method"
+    ],
+    "required": [
+     "model",
+     "positive",
+     "negative",
+     "vae",
+     "latent",
+     "seed",
+     "scale",
+     "steps",
+     "denoise",
+     "cfg",
+     "sampler_name",
+     "scheduler",
+     "face_protect",
+     "face_sigma",
+     "identity_boost"
+    ]
+   },
+   "output": [
+    "LATENT",
+    "STRING"
+   ],
+   "output_name": [
+    "latent",
+    "summary"
+   ],
+   "output_node": false
+  },
   "MossPhotonIdentityDetailer": {
    "category": "MossPhoton/5 Finishing",
    "display_name": "Moss Photon Identity Detailer",

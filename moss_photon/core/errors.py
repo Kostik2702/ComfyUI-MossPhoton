@@ -314,6 +314,21 @@ _STATUS_SEVERITY = (
     ("override_outside_bounds", "warning"), ("forward_budget_exceeded", "warning"),
     ("preset_pin_mismatch", "warning"), ("multiple_distill_loras", "warning"), ("lora_plan_after_patches", "info"),
     ("lora_plan_entry_inactive", "warning"),
+    # MP-91: MossPhotonHiresFix. Every code is a degradation: the node runs on, it never stops for one of them. hires_no_detector /
+    # hires_detector_failed / hires_no_face: the face protection could not be built, the run is the stock pair of nodes.
+    # hires_face_sigma_above_schedule: face_sigma is at or above the first sigma, so the protection would do nothing and is not
+    # built. hires_face_sigma_below_schedule: at or below the last one, so the face stays as in the source. hires_boost_no_target:
+    # identity_boost > 0 and no LoRA to boost. hires_boost_distill_skipped: the selected character_lora is a known distill file,
+    # which is never boosted. hires_boost_already_in_plan (info): the selected character_lora is a plan entry that is boosted
+    # already, it is boosted once. hires_lora_phase_skipped (info): plan entries that do not act in the second pass.
+    # hires_mask_not_combined: the latent carries a noise_mask or the MODEL a denoise_mask_function, and the face mask would
+    # replace it; the face protection is not built. hires_bicubic_not_held: upscale_method latent_bicubic with a face to hold; the
+    # bicubic latent upscale leaves a semi-transparent doubled image that a held face would keep, so the run used pixel_lanczos.
+    ("hires_no_detector", "warning"), ("hires_detector_failed", "warning"), ("hires_no_face", "warning"),
+    ("hires_face_sigma_above_schedule", "warning"), ("hires_face_sigma_below_schedule", "warning"),
+    ("hires_boost_no_target", "warning"), ("hires_boost_distill_skipped", "warning"),
+    ("hires_boost_already_in_plan", "info"), ("hires_lora_phase_skipped", "info"), ("hires_mask_not_combined", "warning"),
+    ("hires_bicubic_not_held", "warning"),
 )
 
 

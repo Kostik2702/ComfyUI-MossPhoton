@@ -168,6 +168,9 @@ WHITELIST = {
         "_require_valid_report": {"output_error": "broken report input"},
     },
     "nodes/diagnostics.py": {"_require_valid_report": {"output_error": "broken report / image input"}},
+    # MossPhotonHiresFix (MP-91) has NO row: it raises nothing of its own. A wrong MODEL or latent, a LoRA that cannot be mapped and
+    # a non-finite output come out of rows above (adapter.validate_*, lora.plan_patches, guard.check_finite); a missing LoRA file is
+    # ComfyUI's FileNotFoundError. tests/unit/hires/test_hires_node.py pins that nodes/hires.py and finishing/hires.py stay clear.
     "nodes/lora.py": {
         "MossPhotonLoRAProfile.apply": {
             "incompatible_lora": "MossPhotonLoRAProfile (deprecated): unmappable / broken LoRA",

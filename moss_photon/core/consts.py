@@ -5,7 +5,7 @@ Leaf module: no imports at all (design 7.3). ``REASON_CODES`` lives in ``errors.
 
 PACK_NAME = "ComfyUI-MossPhoton"
 # A unit test asserts equality with pyproject.toml.
-PACK_VERSION = "0.3.0"
+PACK_VERSION = "0.4.0"
 
 REPORT_SCHEMA = 1
 PRESET_SCHEMA = 1
@@ -34,11 +34,13 @@ NODE_IDS_SECOND_QUEUE = (
     "MossPhotonIdentityDetailer",
 )
 
-# Nodes outside SPEC 4.1 / 4.2 (v2): MossPhotonLoRAPhase (LoRA plan by sampling phase, MP-84) and the prompt-enhancer
-# splitter, which only reshapes text for MossPhotonPromptLayout.
+# Nodes outside SPEC 4.1 / 4.2 (v2): MossPhotonLoRAPhase (LoRA plan by sampling phase, MP-84), the prompt-enhancer
+# splitter, which only reshapes text for MossPhotonPromptLayout, and MossPhotonHiresFix (MP-91: the second pass of a hires fix,
+# the face enters the redraw late). NODE_IDS_HELPERS[0] is the LoRA Phase node (core/lora.py reads it by position).
 NODE_IDS_HELPERS = (
     "MossPhotonLoRAPhase",
     "MossPhotonPromptSplit",
+    "MossPhotonHiresFix",
 )
 
 # MossPhotonLoRAPhase phases. The one list: core/lora_plan.py maps every entry to the darkroom phases, the node offers it
